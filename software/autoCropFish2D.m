@@ -3,7 +3,7 @@ function [croppedImage_hwc imageLabeled] = autoCropFish2D(Image_hwc, borderPX, v
 %center of FOV. It applied to all channels.
 %INPUT
 % Image_hwc     a matrix of fish image in different channels (image2d (HeightWidth) * nChannel)
-% borderPX      offset of border (D = 50)
+% borderPX      offset of border (D = 100)
 % vasChannel    channel ID for registration (vasculature channel)
 % OUTPUT
 % croppedImage_hwc   a matrix of cropped image in all channels

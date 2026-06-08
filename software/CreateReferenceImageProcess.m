@@ -1,4 +1,4 @@
-classdef  CreateReferenceImageProcess < ImDImageProcessingProcess & NonSingularProcess
+classdef  CreateReferenceImageProcess < ImLImageProcessingProcess & NonSingularProcess
     % Process Class for create reference image
     % createReferenceImageWrap.m is the wrapper function
     % CreateReferenceImageProcess is part of new FishATLAS Package
@@ -34,7 +34,7 @@ classdef  CreateReferenceImageProcess < ImDImageProcessingProcess & NonSingularP
                 ip = inputParser;
                 ip.CaseSensitive = false;
                 ip.KeepUnmatched = true;
-                ip.addRequired('owner',@(x) isa(x,'ImageData'));
+                ip.addRequired('owner',@(x) isa(x,'ImageList'));
                 ip.addOptional('outputDir',owner.outputDirectory_,@ischar);
                 ip.addOptional('funParams',[],@isstruct);
                 ip.parse(owner,varargin{:});
@@ -50,7 +50,7 @@ classdef  CreateReferenceImageProcess < ImDImageProcessingProcess & NonSingularP
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImDImageProcessingProcess(super_args{:});
+            obj = obj@ImLImageProcessingProcess(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -69,13 +69,16 @@ classdef  CreateReferenceImageProcess < ImDImageProcessingProcess & NonSingularP
         function funParams = getDefaultParams(owner, varargin)
             % Input check
             ip=inputParser;
-            ip.addRequired('owner',@(x) isa(x,'ImageData'));
+            ip.addRequired('owner',@(x) isa(x,'ImageList'));
             ip.addOptional('outputDir', owner.outputDirectory_, @ischar);
             ip.parse(owner, varargin{:})
             outputDir = ip.Results.outputDir;
             
             % Set default parameters
-            funParams.ImFolderIndex = 1:numel(owner.imFolders_);
+            images = owner.getImages(1);
+            sampleImD = images{1};
+            funParams.ImageDataIndex = 1:owner.getSize();
+            funParams.ImFolderIndex = 1:numel(sampleImD.imFolders_);
             funParams.OutputDirectory = [outputDir  filesep 'CreateRefImage'];
             funParams.ProcessIndex = []; % can use this parameter to set which previous process's output to be used as input for this process
 

@@ -1,6 +1,20 @@
 classdef NewFishATLASPackage < Package
     % The main class of the New FishATLAS Package
     %
+    % Mapping from Hanieh's scriptFishAtlas4Jenny_QZ.m modules to package
+    % processes/wrappers:
+    %   Modules 1-2 -> Process 1 FishPreProcessingProcess
+    %                  wrapper: fishPreAlignmentWrap.m
+    %   Module 3    -> Process 2 CreateReferenceImageProcess (optional)
+    %                  wrapper: createReferenceImageWrap.m
+    %   Module 4    -> Process 3 FishRegistrationProcess
+    %                  wrapper: fishRegistrationWrap.m
+    %   Module 5    -> Process 4 CancerDetectionProcess
+    %                  wrapper: cancerDetectionWrap.m
+    %   Module 6    -> Process 5 AccumulationProcess
+    %                  wrapper: accumulationWrap.m
+    %   Module 7    -> separate future process (not implemented yet)
+    %
     % Qiongjing (Jenny) Zou, Feb 2026
 %
 % Copyright (C) 2026, Danuser Lab - UTSouthwestern 
@@ -30,7 +44,7 @@ classdef NewFishATLASPackage < Package
             else
                 % Check input
                 ip =inputParser;
-                ip.addRequired('owner',@(x) isa(x,'ImageData'));
+                ip.addRequired('owner',@(x) isa(x,'ImageList'));
                 ip.addOptional('outputDir',owner.outputDirectory_,@ischar);
                 ip.parse(owner,varargin{:});
                 outputDir = ip.Results.outputDir;
@@ -95,7 +109,7 @@ classdef NewFishATLASPackage < Package
         % add getMovieClass here, so will not call getMovieClass ('MovieData') in Package.m
         function class = getMovieClass() 
             % Retrieve the movie type on which the package can be applied
-            class = 'ImageData';
+            class = 'ImageList';
         end
     end
     

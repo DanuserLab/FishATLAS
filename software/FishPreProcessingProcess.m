@@ -1,4 +1,4 @@
-classdef  FishPreProcessingProcess < ImDImageProcessingProcess & NonSingularProcess
+classdef  FishPreProcessingProcess < ImLImageProcessingProcess & NonSingularProcess
     % Process Class for loading the fish & prepAlign: cropping, padding (resize), flipping
     % fishPreAlignmentWrap.m is the wrapper function
     % FishPreProcessingProcess is part of new FishATLAS Package
@@ -34,7 +34,7 @@ classdef  FishPreProcessingProcess < ImDImageProcessingProcess & NonSingularProc
                 ip = inputParser;
                 ip.CaseSensitive = false;
                 ip.KeepUnmatched = true;
-                ip.addRequired('owner',@(x) isa(x,'ImageData'));
+                ip.addRequired('owner',@(x) isa(x,'ImageList'));
                 ip.addOptional('outputDir',owner.outputDirectory_,@ischar);
                 ip.addOptional('funParams',[],@isstruct);
                 ip.parse(owner,varargin{:});
@@ -50,7 +50,7 @@ classdef  FishPreProcessingProcess < ImDImageProcessingProcess & NonSingularProc
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImDImageProcessingProcess(super_args{:});
+            obj = obj@ImLImageProcessingProcess(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -164,13 +164,16 @@ classdef  FishPreProcessingProcess < ImDImageProcessingProcess & NonSingularProc
         function funParams = getDefaultParams(owner, varargin)
             % Input check
             ip=inputParser;
-            ip.addRequired('owner',@(x) isa(x,'ImageData'));
+            ip.addRequired('owner',@(x) isa(x,'ImageList'));
             ip.addOptional('outputDir', owner.outputDirectory_, @ischar);
             ip.parse(owner, varargin{:})
             outputDir = ip.Results.outputDir;
             
             % Set default parameters
-            funParams.ImFolderIndex = 1:numel(owner.imFolders_);
+            images = owner.getImages(1);
+            sampleImD = images{1};
+            funParams.ImageDataIndex = 1:owner.getSize();
+            funParams.ImFolderIndex = 1:numel(sampleImD.imFolders_);
             funParams.OutputDirectory = [outputDir  filesep 'PreProcessing'];
 
 

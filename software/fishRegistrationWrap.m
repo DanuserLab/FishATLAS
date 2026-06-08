@@ -1,8 +1,8 @@
-function fishRegistrationWrap(imageDataOrProcess, varargin)
+function fishRegistrationWrap(imageListOrProcess, varargin)
 % fishRegistrationWrap wrapper function for FishRegistrationProcess
 %
 % INPUT
-% imageDataOrProcess - either a ImageData (legacy)
+% imageListOrProcess - either a ImageList (legacy)
 %                      or a Process (new as of July 2016)
 %
 % param - (optional) A struct describing the parameters, overrides the
@@ -42,70 +42,123 @@ function fishRegistrationWrap(imageDataOrProcess, varargin)
 
 %% ------------------ Input ---------------- %%
 ip = inputParser;
-ip.addRequired('ImD', @(x) isa(x,'ImageData') || isa(x,'Process') && isa(x.getOwner(),'ImageData'));
+ip.addRequired('imageListOrProcess', @isProcessOrImageList);
 ip.addOptional('paramsIn',[], @isstruct);
-ip.parse(imageDataOrProcess, varargin{:});
+ip.parse(imageListOrProcess, varargin{:});
 paramsIn = ip.Results.paramsIn;
 
 %% Registration
-% Get ImageData object and Process
-[imageData, thisProc] = getOwnerAndProcess(imageDataOrProcess, 'FishRegistrationProcess', true);
+% Get ImageList object and Process
+[imageList, thisProc] = getOwnerAndProcess(imageListOrProcess, 'FishRegistrationProcess', true);
 p = parseProcessParams(thisProc, paramsIn); % If parameters are explicitly given, they should be used
 % rather than the one stored in FishRegistrationProcess
 
 % Parameters
-% p
+% p % for now, all ImDs use same p - QZ
 
-% Sanity Checks
-nImFol = numel(imageData.imFolders_);
-if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
-    error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+numImDs = numel(imageList.imageDataFile_);
+if isfield(p,'ImageDataIndex') && ~isempty(p.ImageDataIndex)
+    imageDataIndex = p.ImageDataIndex;
+else
+    imageDataIndex = 1:numImDs;
+end
+if max(imageDataIndex) > numImDs || min(imageDataIndex)<1 || ~isequal(round(imageDataIndex), imageDataIndex)
+    error('Invalid ImageData numbers specified! Check ImageDataIndex input!!')
 end
 
 % precondition / error checking
 % check if FishPreProcessingProcess was run
 if isempty(p.ProcessIndex)
-    iFishPreProcessingProc = imageData.getProcessIndex('FishPreProcessingProcess',1,true); % nDesired = 1 ; askUser = true
+    iFishPreProcessingProc = imageList.getProcessIndex('FishPreProcessingProcess',1,true); % nDesired = 1 ; askUser = true
     if isempty(iFishPreProcessingProc)
         error('FishPreProcessingProcess needs to be done before run this process.')
     end
-elseif isa(imageData.processes_{p.ProcessIndex},'FishPreProcessingProcess')
+elseif isa(imageList.processes_{p.ProcessIndex},'FishPreProcessingProcess')
     iFishPreProcessingProc = p.ProcessIndex;
 else
     error('The process specified by ProcessIndex is not a valid FishPreProcessingProcess! Check input!')
 end
+fishPreProcessingProc = imageList.processes_{iFishPreProcessingProc};
 
-% logging input paths (bookkeeping)
-inFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    inFilePaths{1,i} = imageData.processes_{iFishPreProcessingProc}.outFilePaths_{2,i}; % use .mat files as input
+ImDs = cell(1, numImDs);
+for iImD = imageDataIndex
+    ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
 end
-thisProc.setInFilePaths(inFilePaths);
 
-% logging output paths.
+% Do below on the ImD level:
+
+allInFilePaths = cell(1, numImDs);
+allOutFilePaths = cell(1, numImDs);
+[packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
+[~, packageOutputName] = fileparts(packageOutputDirectory);
 mkClrDir(p.OutputDirectory);
-outFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    outFilePaths{1,i} = [p.OutputDirectory filesep 'ch' num2str(i)]; % save image output per chan
-    outFilePaths{2,i} = [p.OutputDirectory]; % save .mat files for all channels
-    mkClrDir(outFilePaths{1,i}); % no need to do mkClrDir(outFilePaths{2,i}) here.
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+
+    % Sanity Checks
+    nImFol = numel(imageData.imFolders_);
+    if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
+        error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+    end
+
+    fishPreProcessingOutFilePaths = fishPreProcessingProc.outFilePaths_{1,iImD};
+
+    % logging input paths (bookkeeping)
+    inFilePaths = cell(1, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        inFilePaths{1,iImFolder} = fishPreProcessingOutFilePaths{2,iImFolder}; % use .mat files as input
+    end
+    allInFilePaths{1,iImD} = inFilePaths;
+
+    % logging output paths.
+    imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
+    mkClrDir(imageOutputDirectory);
+    outFilePaths = cell(2, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+    end
+    allOutFilePaths{1,iImD} = outFilePaths;
 end
-thisProc.setOutFilePaths(outFilePaths);
+
+% logging input/output paths on the ImL level.
+thisProc.setInFilePaths(allInFilePaths);
+thisProc.setOutFilePaths(allOutFilePaths);
+
+
+% Run below Algorithm on the ImD level:
+
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+    inFilePaths = allInFilePaths{1,iImD};
+    outFilePaths = allOutFilePaths{1,iImD};
 
 %% Algorithm
-% See module 4: registration in scriptFishAtlas4Jenny_QZ.m
+% Package process mapping:
+% Process 3 FishRegistrationProcess wraps module 4 from
+% scriptFishAtlas4Jenny_QZ.m:
+%   module 4: registration
 % I kept the algorithm most unchanged, just change the way how ImD handles params and input/output paths.. - QZ
 params.Reg = p;
 
 % two modes: 1) no refImage; 2) refImage
 tic
 %create a folder for saving this module seperatedly
-savePath = p.OutputDirectory;
+savePath = outFilePaths{2,p.ImFolderIndex(1)};
 
 %step 4-1: take the channel for registeration from all fish Image
-load([inFilePaths{1,1} filesep 'fishImage_4Reg.mat']); % load output fishImage_hwc from FishPreProcessingProcess - QZ
+load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'fishImage_4Reg.mat']); % load output fishImage_hwc from FishPreProcessingProcess - QZ
 prealignedImage = cat(3,fishImage_hwc{:}); % load output from FishPreProcessingProcess - QZ
 nChannel = numel(imageData.imFolders_);
+nFish = size(fishImage_hwc,1);
+imFileNamesF = imageData.getImageFileNames(1);
+fileList = cellfun(@(x) str2double(regexp(x, '\d+', 'match', 'once')), imFileNamesF{1})';
+if any(isnan(fileList))
+    fileList = (1:nFish)';
+end
 prealignedImage = prealignedImage(:,:,p.vasChannel:nChannel:end);
 
 % step 4-2
@@ -251,6 +304,10 @@ else     % if there is no reference image, do groupwise registration
 
     % rigid registeration, they still need to pick the refrence image ID
     % for rigid registeration from the GUI or just the first image
+    if isempty(params.Reg.rigid.RefImageID)
+       idx = randi(size(prealignedImage,3)); % choose an index of the filelist randomly
+       params.Reg.rigid.RefImageID = idx;
+    end
     fixed = prealignedImage(:,:,params.Reg.rigid.RefImageID);
     [optimizer, metric] = imregconfig(params.Reg.rigid.regmodel);
 
@@ -356,6 +413,47 @@ else     % if there is no reference image, do groupwise registration
     params.Reg.RefImageName = 'RefImage.tif';
 end
 
+% save tif files for rigid registration
+savePath1 = [savePath filesep 'rigid' filesep 'ch' num2str(p.vasChannel)];
+if ~isdir(savePath1) mkdir(savePath1); end
+for iFile = 1:nFish
+    s = sprintf('fish%04d.tif',fileList(iFile));
+    imagetmp = rigidImage(:,:,iFile);
+    imwrite(im2uint8(imagetmp), fullfile(savePath1, s));
+end
+
+% save tif files for nonrigid registration
+savePath1 = [savePath filesep 'nonrigid' filesep 'ch' num2str(p.vasChannel)];
+if ~isdir(savePath1) mkdir(savePath1); end
+for iFile = 1:nFish
+    s = sprintf('fish%04d.tif',fileList(iFile));
+    imagetmp = nonRigidImage(:,:,iFile);
+    imwrite(im2uint8(imagetmp), fullfile(savePath1, s));
+end
+
+% transfer and save the cancer/second channel
+cancerChannel = 2;
+if nChannel >= cancerChannel
+    savePath1 = [savePath filesep 'rigid' filesep 'ch' num2str(cancerChannel)];
+    if ~isdir(savePath1) mkdir(savePath1); end
+    savePath2 = [savePath filesep 'nonrigid' filesep 'ch' num2str(cancerChannel)];
+    if ~isdir(savePath2) mkdir(savePath2); end
+    for iFile = 1:nFish
+        s = sprintf('fish%04d.tif',fileList(iFile));
+        imagetmp = fishImage_hwc{iFile}(:,:,cancerChannel);
+        rigidImage_ch2(:,:,iFile) = imwarp(imagetmp,tformTotal{iFile},'OutputView',imref2d(size(RefImage)));
+        imagetmp = rigidImage_ch2(:,:,iFile);
+        imwrite(im2uint8(imagetmp), fullfile(savePath1, s));
+        if any(isnan(reshape(dispField(:,:,:,iFile),[],1)))
+            imagetmp = zeros(size(imagetmp));
+            imwrite(im2uint8(imagetmp), fullfile(savePath2, s));
+            continue
+        end
+        nonRigidImage_ch2(:,:,iFile) = imwarp(rigidImage_ch2(:,:,iFile), dispField(:,:,:,iFile),'interp', 'nearest');
+        imagetmp = nonRigidImage_ch2(:,:,iFile);
+        imwrite(im2uint8(imagetmp), fullfile(savePath2, s));
+    end
+end
 
 % % save parameters
 % save(fullfile(saveDirectory,'params.mat'), 'params');
@@ -365,5 +463,6 @@ end
 
 toc
 
-disp('Finished fish registration!')
+end
 
+disp('Finished fish registration!')

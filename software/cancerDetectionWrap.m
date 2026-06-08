@@ -1,8 +1,8 @@
-function cancerDetectionWrap(imageDataOrProcess, varargin)
+function cancerDetectionWrap(imageListOrProcess, varargin)
 % cancerDetectionWrap wrapper function for CancerDetectionProcess
 %
 % INPUT
-% imageDataOrProcess - either a ImageData (legacy)
+% imageListOrProcess - either a ImageList (legacy)
 %                      or a Process (new as of July 2016)
 %
 % param - (optional) A struct describing the parameters, overrides the
@@ -42,71 +42,125 @@ function cancerDetectionWrap(imageDataOrProcess, varargin)
 
 %% ------------------ Input ---------------- %%
 ip = inputParser;
-ip.addRequired('ImD', @(x) isa(x,'ImageData') || isa(x,'Process') && isa(x.getOwner(),'ImageData'));
+ip.addRequired('imageListOrProcess', @isProcessOrImageList);
 ip.addOptional('paramsIn',[], @isstruct);
-ip.parse(imageDataOrProcess, varargin{:});
+ip.parse(imageListOrProcess, varargin{:});
 paramsIn = ip.Results.paramsIn;
 
 %% Registration
-% Get ImageData object and Process
-[imageData, thisProc] = getOwnerAndProcess(imageDataOrProcess, 'CancerDetectionProcess', true);
+% Get ImageList object and Process
+[imageList, thisProc] = getOwnerAndProcess(imageListOrProcess, 'CancerDetectionProcess', true);
 p = parseProcessParams(thisProc, paramsIn); % If parameters are explicitly given, they should be used
 % rather than the one stored in CancerDetectionProcess
 
 % Parameters
-% p
+% p % for now, all ImDs use same p - QZ
 
-% Sanity Checks
-nImFol = numel(imageData.imFolders_);
-if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
-    error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+numImDs = numel(imageList.imageDataFile_);
+if isfield(p,'ImageDataIndex') && ~isempty(p.ImageDataIndex)
+    imageDataIndex = p.ImageDataIndex;
+else
+    imageDataIndex = 1:numImDs;
+end
+if max(imageDataIndex) > numImDs || min(imageDataIndex)<1 || ~isequal(round(imageDataIndex), imageDataIndex)
+    error('Invalid ImageData numbers specified! Check ImageDataIndex input!!')
 end
 
 % precondition / error checking
 % check if FishRegistrationProcess was run
 if isempty(p.ProcessIndex)
-    iFishRegProcessingProc = imageData.getProcessIndex('FishRegistrationProcess',1,true); % nDesired = 1 ; askUser = true
+    iFishRegProcessingProc = imageList.getProcessIndex('FishRegistrationProcess',1,true); % nDesired = 1 ; askUser = true
     if isempty(iFishRegProcessingProc)
         error('FishRegistrationProcess needs to be done before run this process.')
     end
-elseif isa(imageData.processes_{p.ProcessIndex},'FishRegistrationProcess')
+elseif isa(imageList.processes_{p.ProcessIndex},'FishRegistrationProcess')
     iFishRegProcessingProc = p.ProcessIndex;
 else
     error('The process specified by ProcessIndex is not a valid FishRegistrationProcess! Check input!')
 end
+fishRegProcessingProc = imageList.processes_{iFishRegProcessingProc};
 
-% logging input paths (bookkeeping)
-inFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    inFilePaths{1,i} = imageData.processes_{iFishRegProcessingProc}.outFilePaths_{2,i}; % use .mat files as input
+ImDs = cell(1, numImDs);
+for iImD = imageDataIndex
+    ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
 end
-thisProc.setInFilePaths(inFilePaths);
 
-% logging output paths.
+% Do below on the ImD level:
+
+allInFilePaths = cell(1, numImDs);
+allOutFilePaths = cell(1, numImDs);
+[packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
+[~, packageOutputName] = fileparts(packageOutputDirectory);
 mkClrDir(p.OutputDirectory);
-outFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    outFilePaths{1,i} = [p.OutputDirectory filesep 'ch' num2str(i)]; % save image output per chan
-    outFilePaths{2,i} = [p.OutputDirectory]; % save .mat files for all channels
-    mkClrDir(outFilePaths{1,i}); % no need to do mkClrDir(outFilePaths{2,i}) here.
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+
+    % Sanity Checks
+    nImFol = numel(imageData.imFolders_);
+    if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
+        error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+    end
+
+    fishRegOutFilePaths = fishRegProcessingProc.outFilePaths_{1,iImD};
+
+    % logging input paths (bookkeeping)
+    inFilePaths = cell(1, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        inFilePaths{1,iImFolder} = fishRegOutFilePaths{2,iImFolder}; % use .mat files as input
+    end
+    allInFilePaths{1,iImD} = inFilePaths;
+
+    % logging output paths.
+    imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
+    mkClrDir(imageOutputDirectory);
+    outFilePaths = cell(2, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+    end
+    allOutFilePaths{1,iImD} = outFilePaths;
 end
-thisProc.setOutFilePaths(outFilePaths);
+
+% logging input/output paths on the ImL level.
+thisProc.setInFilePaths(allInFilePaths);
+thisProc.setOutFilePaths(allOutFilePaths);
+
+
+% Run below Algorithm on the ImD level:
+
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+    inFilePaths = allInFilePaths{1,iImD};
+    outFilePaths = allOutFilePaths{1,iImD};
 
 %% Algorithm
-% See module 5: cancer detection and apply registration map on cancer image/dots in scriptFishAtlas4Jenny_QZ.m
+% Package process mapping:
+% Process 4 CancerDetectionProcess wraps module 5 from
+% scriptFishAtlas4Jenny_QZ.m:
+%   module 5: cancer detection and apply registration map on cancer image/dots
+% Module 5-2 is currently only a proliferation-marker placeholder in the script.
 % I kept the algorithm most unchanged, just change the way how ImD handles params and input/output paths.. - QZ
 params.pointDetection = p;
 
 tic;
+saveDirectory = outFilePaths{2,p.ImFolderIndex(1)};
 %step 5-1: take the channel for cancer cells form all fish Image
-load([inFilePaths{1,1} filesep 'fishImage.mat']); % load output fishImage_hwc from FishRegistrationProcess, which is the same output from step 1 and resaved in step 4. - QZ
+load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'fishImage.mat']); % load output fishImage_hwc from FishRegistrationProcess, which is the same output from step 1 and resaved in step 4. - QZ
 cancerImage = cat(3,fishImage_hwc{:}); % original raw image after cropping, no scaling!
 cancerImage = cancerImage(:,:,p.cancerChannel:numel(imageData.imFolders_):end);
 
 % check if the image size is similar to the refimage , if not 1) do the
 % point detection on the original raw image, 2) rescale points
 % RefImage = tiffreadVolume(fullfile(params.Reg.RefImagePath,params.Reg.RefImageName));
-RefImage = tiffreadVolume(fullfile(imageData.processes_{iFishRegProcessingProc}.funParams_.RefImagePath,imageData.processes_{iFishRegProcessingProc}.funParams_.RefImageName));
+refImagePath = fullfile(inFilePaths{1,p.ImFolderIndex(1)}, 'RefImage.tif');
+if exist(refImagePath, 'file')
+    RefImage = tiffreadVolume(refImagePath);
+else
+    RefImage = tiffreadVolume(fullfile(fishRegProcessingProc.funParams_.RefImagePath,fishRegProcessingProc.funParams_.RefImageName));
+end
 SZ_RefImg = size(RefImage);
 SZ_fishImage = size(cancerImage);
 
@@ -116,7 +170,7 @@ params.pointDetection.Scale(2) = SZ_RefImg(1)/SZ_fishImage(1);
 
 % detect cancer regions using point patterns - single scale detection
 % savePath = [saveDirectory filesep 'PointDetection'];
-savePath = p.OutputDirectory; % QZ
+savePath = saveDirectory; % QZ
 % num2str(params.pointDetection.intensityPerctile) filesep
 % 'dotsOnFishImage']; savePath = [saveDirectory filesep
 % 'PointDetection_max'
@@ -150,7 +204,7 @@ for iFile = 1: size(cancerImage,3)
     ptCloudCoor = round([X ,Y ]);
     % IntensityThresh =
     % prctile(pstruct.A,params.pointDetection.intensityPerctile);
-    IntensityThresh = max(pstruct.A)*params.pointDetection.maxIntensityRateThresh;
+    IntensityThresh = max(max(pstruct.A), max(single(imagetmp(:))))*params.pointDetection.maxIntensityRateThresh;
     % IntensityThresh = params.pointDetection.IntensityThresh;
     Ind_good = find(pstruct.A >= IntensityThresh);
     ptCloudCoor = [X(Ind_good), Y(Ind_good)] ;
@@ -208,14 +262,22 @@ save(fullfile(savePath,'dotDetection_weight.mat'),'weightPoints', 'binaryImageFi
 
 %save binary image in a seprate folder 
 % savePath = [saveDirectory filesep 'BinaryDetection']; 
-savePath = [p.OutputDirectory filesep 'BinaryDetection']; % QZ put it in CancerDetection folder, instead of one folder up.
+savePath = [saveDirectory filesep 'BinaryDetection']; % QZ put it in CancerDetection folder, instead of one folder up.
 if ~isdir(savePath)  mkdir(savePath); end
 binaryImageFish = im2uint8(binaryImageFish); 
+
+% save tif files for binary images per fish
+i = p.cancerChannel;
+for iFile = 1:size(cancerImage,3)
+    imagetmp = binaryImageFish(:,:,iFile);
+    s = sprintf('fish%04d.tif',iFile);
+    imwrite(imagetmp, fullfile(outFilePaths{1,i}, s));
+end
 save(fullfile(savePath,'binaryImage.mat'),'binaryImageFish','binaryAreaDots');
 
 % transfer points based on displacement fields from registration
 % savePath = [saveDirectory filesep 'TransferCancer'];
-savePath = [p.OutputDirectory filesep 'TransferCancer']; % QZ put it in CancerDetection folder, instead of one folder up.
+savePath = [saveDirectory filesep 'TransferCancer']; % QZ put it in CancerDetection folder, instead of one folder up.
 mkdir(savePath);
 savePath2 = [savePath filesep 'TransferDots'];
 mkdir(savePath2);
@@ -234,12 +296,12 @@ for iFile = 1: size(cancerImage,3)
 
     %transformation map for rigid and non-rigid registration if
     %registration is good
-    load([inFilePaths{1,1} filesep 'registeredFishnonRigid.mat']); % load another output from FishRegistrationProcess - QZ
+    load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'registeredFishnonRigid.mat']); % load another output from FishRegistrationProcess - QZ
     if imageFlag_nonRigid(iFile) == 0 % QZ imageFlag_nonRigid is in registeredFishnonRigid.mat
         continue
     end
 
-    load([inFilePaths{1,1} filesep 'registeredFishRigid.mat']); % load another output from FishRegistrationProcess - QZ
+    load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'registeredFishRigid.mat']); % load another output from FishRegistrationProcess - QZ
     tform = tformTotal{iFile}; % QZ tformTotal is in registeredFishRigid.mat
     DF = dispField(:,:,:,iFile); % QZ dispField is also in registeredFishnonRigid.mat
 
@@ -287,5 +349,6 @@ save(fullfile(savePath,'binaryImage.mat'),'binaryImageFish', 'binaryRigidReg', '
 
 toc
 
-disp('Finished cancer detection!')
+end
 
+disp('Finished cancer detection!')

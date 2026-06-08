@@ -1,8 +1,8 @@
-function accumulationWrap(imageDataOrProcess, varargin)
+function accumulationWrap(imageListOrProcess, varargin)
 % accumulationWrap wrapper function for AccumulationProcess
 %
 % INPUT
-% imageDataOrProcess - either a ImageData (legacy)
+% imageListOrProcess - either a ImageList (legacy)
 %                      or a Process (new as of July 2016)
 %
 % param - (optional) A struct describing the parameters, overrides the
@@ -42,82 +42,135 @@ function accumulationWrap(imageDataOrProcess, varargin)
 
 %% ------------------ Input ---------------- %%
 ip = inputParser;
-ip.addRequired('ImD', @(x) isa(x,'ImageData') || isa(x,'Process') && isa(x.getOwner(),'ImageData'));
+ip.addRequired('imageListOrProcess', @isProcessOrImageList);
 ip.addOptional('paramsIn',[], @isstruct);
-ip.parse(imageDataOrProcess, varargin{:});
+ip.parse(imageListOrProcess, varargin{:});
 paramsIn = ip.Results.paramsIn;
 
 %% Registration
-% Get ImageData object and Process
-[imageData, thisProc] = getOwnerAndProcess(imageDataOrProcess, 'AccumulationProcess', true);
+% Get ImageList object and Process
+[imageList, thisProc] = getOwnerAndProcess(imageListOrProcess, 'AccumulationProcess', true);
 p = parseProcessParams(thisProc, paramsIn); % If parameters are explicitly given, they should be used
 % rather than the one stored in AccumulationProcess
 
 % Parameters
-% p
+% p % for now, all ImDs use same p - QZ
 
-% Sanity Checks
-nImFol = numel(imageData.imFolders_);
-if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
-    error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+numImDs = numel(imageList.imageDataFile_);
+if isfield(p,'ImageDataIndex') && ~isempty(p.ImageDataIndex)
+    imageDataIndex = p.ImageDataIndex;
+else
+    imageDataIndex = 1:numImDs;
+end
+if max(imageDataIndex) > numImDs || min(imageDataIndex)<1 || ~isequal(round(imageDataIndex), imageDataIndex)
+    error('Invalid ImageData numbers specified! Check ImageDataIndex input!!')
 end
 
 % precondition / error checking
 % check if CancerDetectionProcess was run
 if isempty(p.ProcessIndex)
-    iCancerDetectionProc = imageData.getProcessIndex('CancerDetectionProcess',1,true); % nDesired = 1 ; askUser = true
+    iCancerDetectionProc = imageList.getProcessIndex('CancerDetectionProcess',1,true); % nDesired = 1 ; askUser = true
     if isempty(iCancerDetectionProc)
         error('CancerDetectionProcess needs to be done before run this process.')
     end
-elseif isa(imageData.processes_{p.ProcessIndex},'CancerDetectionProcess')
+elseif isa(imageList.processes_{p.ProcessIndex},'CancerDetectionProcess')
     iCancerDetectionProc = p.ProcessIndex;
 else
     error('The process specified by ProcessIndex is not a valid CancerDetectionProcess! Check input!')
 end
+cancerDetectionProc = imageList.processes_{iCancerDetectionProc};
 
 % Find the index of FishRegistrationProcess for the refImage used in this step:
-iFishRegProcessingProc = imageData.getProcessIndex('FishRegistrationProcess',1,true); % nDesired = 1 ; askUser = true
+iFishRegProcessingProc = imageList.getProcessIndex('FishRegistrationProcess',1,true); % nDesired = 1 ; askUser = true
 if isempty(iFishRegProcessingProc)
     error('FishRegistrationProcess needs to be done before run this process.')
 end
+fishRegProcessingProc = imageList.processes_{iFishRegProcessingProc};
 
-
-% logging input paths (bookkeeping)
-inFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    inFilePaths{1,i} = imageData.processes_{iCancerDetectionProc}.outFilePaths_{2,i}; % use .mat files as input
+ImDs = cell(1, numImDs);
+for iImD = imageDataIndex
+    ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
 end
-thisProc.setInFilePaths(inFilePaths);
 
-% logging output paths.
+% Do below on the ImD level:
+
+allInFilePaths = cell(1, numImDs);
+allOutFilePaths = cell(1, numImDs);
+[packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
+[~, packageOutputName] = fileparts(packageOutputDirectory);
 mkClrDir(p.OutputDirectory);
-outFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    outFilePaths{1,i} = [p.OutputDirectory filesep 'ch' num2str(i)]; % save image output per chan
-    outFilePaths{2,i} = [p.OutputDirectory]; % save .mat files for all channels
-    mkClrDir(outFilePaths{1,i}); % no need to do mkClrDir(outFilePaths{2,i}) here.
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+
+    % Sanity Checks
+    nImFol = numel(imageData.imFolders_);
+    if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
+        error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+    end
+
+    cancerDetectionOutFilePaths = cancerDetectionProc.outFilePaths_{1,iImD};
+
+    % logging input paths (bookkeeping)
+    inFilePaths = cell(1, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        inFilePaths{1,iImFolder} = cancerDetectionOutFilePaths{2,iImFolder}; % use .mat files as input
+    end
+    allInFilePaths{1,iImD} = inFilePaths;
+
+    % logging output paths.
+    imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
+    mkClrDir(imageOutputDirectory);
+    outFilePaths = cell(2, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+    end
+    allOutFilePaths{1,iImD} = outFilePaths;
 end
-thisProc.setOutFilePaths(outFilePaths);
+
+% logging input/output paths on the ImL level.
+thisProc.setInFilePaths(allInFilePaths);
+thisProc.setOutFilePaths(allOutFilePaths);
+
+
+% Run below Algorithm on the ImD level:
+
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+    inFilePaths = allInFilePaths{1,iImD};
+    outFilePaths = allOutFilePaths{1,iImD};
 
 %% Algorithm
-% See module 6: accumulator in scriptFishAtlas4Jenny_QZ.m
+% Package process mapping:
+% Process 5 AccumulationProcess wraps module 6 from
+% scriptFishAtlas4Jenny_QZ.m:
+%   module 6: accumulator
 % I kept the algorithm most unchanged, just change the way how ImD handles params and input/output paths.. - QZ
 params.accumulation = p;
 
 tic;
 
 % savePath = [saveDirectory filesep 'Accumulation']; 
-savePath = p.OutputDirectory; % QZ
+savePath = outFilePaths{2,p.ImFolderIndex(1)}; % QZ
 
 % load a refImage
-RefImage = tiffreadVolume(fullfile(imageData.processes_{iFishRegProcessingProc}.funParams_.RefImagePath, imageData.processes_{iFishRegProcessingProc}.funParams_.RefImageName));
+fishRegOutFilePaths = fishRegProcessingProc.outFilePaths_{1,iImD};
+refImagePath = fullfile(fishRegOutFilePaths{2,p.ImFolderIndex(1)}, 'RefImage.tif');
+if exist(refImagePath, 'file')
+    RefImage = tiffreadVolume(refImagePath);
+else
+    RefImage = tiffreadVolume(fullfile(fishRegProcessingProc.funParams_.RefImagePath, fishRegProcessingProc.funParams_.RefImageName));
+end
 
 % step 6-1: create nonrigid points and corresponding fishID
 fishIDsAll = [];
 pointCoodAll = [];
 weightPointsAll = [];
 
-load([inFilePaths{1,1} filesep 'TransferCancer' filesep 'allPoints.mat']); % load output from CancerDetectionProcess - QZ
+load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'TransferCancer' filesep 'allPoints.mat']); % load output from CancerDetectionProcess - QZ
 for iFile = 1: size(nonRigidPoints,1) % QZ nonRigidPoints is in allPoints.mat
     X = nonRigidPoints{iFile};
     %skip for fish those have fail registration
@@ -145,6 +198,9 @@ if ~isempty(params.accumulation.fishBodyImage)
     binaryImage = tiffreadVolume(fullfile(params.accumulation.fishBodyImageDir,params.accumulation.fishBodyImage));
 else
     binaryImage = makeBinaryFishBody(RefImage);
+    figure;
+    imshow(binaryImage);
+    warning('The generated binary image may require manual verification before creating an accumulator')
 end
 
 if params.accumulation.removeOutsides
@@ -176,10 +232,10 @@ imwrite(im2uint8(binaryImage),fullfile(savePath,'fishBodyImage.tif'));
 
 % % save parameters
 % save(fullfile(saveDirectory,'params.mat'), 'params');
-% t = toc;
-% save(fullfile(savePath,'processingTime.mat'),'t')
 
-toc
+t = toc;
+save(fullfile(savePath,'processingTime.mat'),'t')
+
+end
 
 disp('Finished accumulation!')
-

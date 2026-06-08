@@ -1,8 +1,8 @@
-function createReferenceImageWrap(imageDataOrProcess, varargin)
+function createReferenceImageWrap(imageListOrProcess, varargin)
 % createReferenceImageWrap wrapper function for CreateReferenceImageProcess
 %
 % INPUT
-% imageDataOrProcess - either a ImageData (legacy)
+% imageListOrProcess - either a ImageList (legacy)
 %                      or a Process (new as of July 2016)
 %
 % param - (optional) A struct describing the parameters, overrides the
@@ -42,61 +42,110 @@ function createReferenceImageWrap(imageDataOrProcess, varargin)
 
 %% ------------------ Input ---------------- %%
 ip = inputParser;
-ip.addRequired('ImD', @(x) isa(x,'ImageData') || isa(x,'Process') && isa(x.getOwner(),'ImageData'));
+ip.addRequired('imageListOrProcess', @isProcessOrImageList);
 ip.addOptional('paramsIn',[], @isstruct);
-ip.parse(imageDataOrProcess, varargin{:});
+ip.parse(imageListOrProcess, varargin{:});
 paramsIn = ip.Results.paramsIn;
 
 %% Registration
-% Get ImageData object and Process
-[imageData, thisProc] = getOwnerAndProcess(imageDataOrProcess, 'CreateReferenceImageProcess', true);
+% Get ImageList object and Process
+[imageList, thisProc] = getOwnerAndProcess(imageListOrProcess, 'CreateReferenceImageProcess', true);
 p = parseProcessParams(thisProc, paramsIn); % If parameters are explicitly given, they should be used
 % rather than the one stored in CreateReferenceImageProcess
 
 % Parameters
-% p
+% p % for now, all ImDs use same p - QZ
 
-% Sanity Checks
-nImFol = numel(imageData.imFolders_);
-if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
-    error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+numImDs = numel(imageList.imageDataFile_);
+if isfield(p,'ImageDataIndex') && ~isempty(p.ImageDataIndex)
+    imageDataIndex = p.ImageDataIndex;
+else
+    imageDataIndex = 1:numImDs;
+end
+if max(imageDataIndex) > numImDs || min(imageDataIndex)<1 || ~isequal(round(imageDataIndex), imageDataIndex)
+    error('Invalid ImageData numbers specified! Check ImageDataIndex input!!')
 end
 
-% precondition / error checking
-% % must have at least 2 imFolders_
-% if numel(imageData.imFolders_) < 2
-%     error('imageData.imFolders_ must contain at least 2 image folders!');
-% end
-
-% % nImages_ in each ImFolder must be the same
-% nImages = arrayfun(@(x) x.nImages_, imageData.imFolders_);
-% if ~all(nImages == nImages(1))
-%     error('Number of Images in each Image Folder needs to be the same! Check ImageData input!');
-% end
-
-% logging input paths (bookkeeping)
-inFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    inFilePaths{1,i} = imageData.getImFolderPaths{i};
+ImDs = cell(1, numImDs);
+for iImD = imageDataIndex
+    ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
 end
-thisProc.setInFilePaths(inFilePaths);
 
-% QZ TODO: need to edit this when has algorithm 
-% logging output paths.
+% Do below on the ImD level:
+
+allInFilePaths = cell(1, numImDs);
+allOutFilePaths = cell(1, numImDs);
+[packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
+[~, packageOutputName] = fileparts(packageOutputDirectory);
 mkClrDir(p.OutputDirectory);
-outFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    outFilePaths{1,i} = [p.OutputDirectory filesep 'ch' num2str(i)]; % save image output per chan
-    outFilePaths{2,i} = [p.OutputDirectory]; % save .mat files for all channels
-    mkClrDir(outFilePaths{1,i}); % no need to do mkClrDir(outFilePaths{2,i}) here.
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+
+    % Sanity Checks
+    nImFol = numel(imageData.imFolders_);
+    if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
+        error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
+    end
+
+    % precondition / error checking
+    % % must have at least 2 imFolders_
+    % if numel(imageData.imFolders_) < 2
+    %     error('imageData.imFolders_ must contain at least 2 image folders!');
+    % end
+
+    % % nImages_ in each ImFolder must be the same
+    % nImages = arrayfun(@(x) x.nImages_, imageData.imFolders_);
+    % if ~all(nImages == nImages(1))
+    %     error('Number of Images in each Image Folder needs to be the same! Check ImageData input!');
+    % end
+
+    % logging input paths (bookkeeping)
+    inFilePaths = cell(1, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        inFilePaths{1,iImFolder} = imageData.getImFolderPaths{iImFolder};
+    end
+    allInFilePaths{1,iImD} = inFilePaths;
+
+    % logging output paths.
+    imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
+    mkClrDir(imageOutputDirectory);
+    outFilePaths = cell(2, numel(imageData.imFolders_));
+    for iImFolder = p.ImFolderIndex
+        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+    end
+    allOutFilePaths{1,iImD} = outFilePaths;
 end
-thisProc.setOutFilePaths(outFilePaths);
+
+% logging input/output paths on the ImL level.
+thisProc.setInFilePaths(allInFilePaths);
+thisProc.setOutFilePaths(allOutFilePaths);
+
+
+% Run below Algorithm on the ImD level:
+% QZ TODO: need to edit this when has algorithm
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+    inFilePaths = allInFilePaths{1,iImD};
+    outFilePaths = allOutFilePaths{1,iImD};
 
 
 %% Algorithm
-% Do nothing, no algorithm yet in scriptFishAtlas4Jenny_QZ.m - QZ
+% Package process mapping:
+% Process 2 CreateReferenceImageProcess wraps module 3 from
+% scriptFishAtlas4Jenny_QZ.m:
+%   module 3: create refimage
+%
+% QZ TODO: module 3 is imageList/cross-condition level in Hanieh's script.
+% Decide whether this ImageData process should create a reference image from
+% only the current imageData, or whether this should become an ImageList-level
+% process before moving the full algorithm here.
 
 
+
+end
 
 disp('Finished fish reference image creation!')
-

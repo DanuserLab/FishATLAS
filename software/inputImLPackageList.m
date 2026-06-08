@@ -1,12 +1,8 @@
-function varargout = NewFishATLASPackageGUI(varargin)
-% Launch the GUI for the FishATLAS Package
-%
-% This function calls the generic packageGUI function, passes all its input
-% arguments and returns all output arguments of packageGUI
-%
-%
-% Qiongjing (Jenny) Zou, Feb 2026
-%
+function ImLpackList = inputImLPackageList()
+    % inputImLPackageList - Returns packages using ImageList as input.
+    %
+    % Add ImageList-native packages here so generic package GUI helper
+    % functions can treat ImageList owners like MovieList owners.
 %
 % Copyright (C) 2026, Danuser Lab - UTSouthwestern 
 %
@@ -27,11 +23,8 @@ function varargout = NewFishATLASPackageGUI(varargin)
 % 
 % 
 
-% Comment out below, b/c I do not want to switch to the ImDs as packageGUI's input, when use ImL as input.
-% if nargin>0 && isa(varargin{1},'MovieList')
-%     varargout{1} = packageGUI('NewFishATLASPackage',[varargin{1}.getMovies{:}],...
-%         varargin{2:end}, 'ImL', varargin{1});
-% else
-    varargout{1} = packageGUI('NewFishATLASPackage',varargin{:}); % QZ input here is ImL
-% end
+    ImLpackList = {
+        'NewFishATLASPackage', ...
+        % Add new packages here
+    };
 end

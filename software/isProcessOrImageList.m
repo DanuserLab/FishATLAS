@@ -1,12 +1,5 @@
-function varargout = NewFishATLASPackageGUI(varargin)
-% Launch the GUI for the FishATLAS Package
-%
-% This function calls the generic packageGUI function, passes all its input
-% arguments and returns all output arguments of packageGUI
-%
-%
-% Qiongjing (Jenny) Zou, Feb 2026
-%
+function [ out ] = isProcessOrImageList( x )
+%isProcessOrImageList True if input is a Process or ImageList instance
 %
 % Copyright (C) 2026, Danuser Lab - UTSouthwestern 
 %
@@ -27,11 +20,6 @@ function varargout = NewFishATLASPackageGUI(varargin)
 % 
 % 
 
-% Comment out below, b/c I do not want to switch to the ImDs as packageGUI's input, when use ImL as input.
-% if nargin>0 && isa(varargin{1},'MovieList')
-%     varargout{1} = packageGUI('NewFishATLASPackage',[varargin{1}.getMovies{:}],...
-%         varargin{2:end}, 'ImL', varargin{1});
-% else
-    varargout{1} = packageGUI('NewFishATLASPackage',varargin{:}); % QZ input here is ImL
-% end
+out = isProcessOrMovieObject(x, 'ImageList');
+
 end

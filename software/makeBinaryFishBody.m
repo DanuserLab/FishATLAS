@@ -21,7 +21,6 @@ function binaryImage = makeBinaryFishBody(fishImage, NthreshLevel)
 % 
 % 
 
-
 if ~exist('NThreshLevel','var')
     NThreshLevel = 6;
 end 

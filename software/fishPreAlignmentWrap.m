@@ -1,8 +1,8 @@
-function fishPreAlignmentWrap(imageDataOrProcess, varargin)
+function fishPreAlignmentWrap(imageListOrProcess, varargin)
 % fishPreAlignmentWrap wrapper function for FishPreProcessingProcess
 %
 % INPUT
-% imageDataOrProcess - either a ImageData (legacy)
+% imageListOrProcess - either a ImageList (legacy)
 %                      or a Process (new as of July 2016)
 %
 % param - (optional) A struct describing the parameters, overrides the
@@ -42,19 +42,46 @@ function fishPreAlignmentWrap(imageDataOrProcess, varargin)
 
 %% ------------------ Input ---------------- %%
 ip = inputParser;
-ip.addRequired('ImD', @(x) isa(x,'ImageData') || isa(x,'Process') && isa(x.getOwner(),'ImageData'));
+ip.addRequired('imageListOrProcess', @isProcessOrImageList);
 ip.addOptional('paramsIn',[], @isstruct);
-ip.parse(imageDataOrProcess, varargin{:});
+ip.parse(imageListOrProcess, varargin{:});
 paramsIn = ip.Results.paramsIn;
 
 %% Registration
-% Get ImageData object and Process
-[imageData, thisProc] = getOwnerAndProcess(imageDataOrProcess, 'FishPreProcessingProcess', true);
+% Get ImageList object and Process
+[imageList, thisProc] = getOwnerAndProcess(imageListOrProcess, 'FishPreProcessingProcess', true);
 p = parseProcessParams(thisProc, paramsIn); % If parameters are explicitly given, they should be used
 % rather than the one stored in FishPreProcessingProcess
 
 % Parameters
-% p
+% p % for now, all ImDs use same p - QZ
+
+numImDs = numel(imageList.imageDataFile_);
+if isfield(p,'ImageDataIndex') && ~isempty(p.ImageDataIndex)
+    imageDataIndex = p.ImageDataIndex;
+else
+    imageDataIndex = 1:numImDs;
+end
+if max(imageDataIndex) > numImDs || min(imageDataIndex)<1 || ~isequal(round(imageDataIndex), imageDataIndex)
+    error('Invalid ImageData numbers specified! Check ImageDataIndex input!!')
+end
+
+ImDs = cell(1, numImDs);
+for iImD = imageDataIndex
+    ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
+end
+
+% Do below on the ImD level:
+
+allInFilePaths = cell(1, numImDs);
+allOutFilePaths = cell(1, numImDs);
+[packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
+[~, packageOutputName] = fileparts(packageOutputDirectory);
+mkClrDir(p.OutputDirectory);
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+
 
 % Sanity Checks
 nImFol = numel(imageData.imFolders_);
@@ -78,51 +105,71 @@ end
 
 % logging input paths (bookkeeping)
 inFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    inFilePaths{1,i} = imageData.getImFolderPaths{i};
+for iImFolder = p.ImFolderIndex
+    inFilePaths{1,iImFolder} = imageData.getImFolderPaths{iImFolder};
 end
-thisProc.setInFilePaths(inFilePaths);
+allInFilePaths{1,iImD} = inFilePaths;
 
 % logging output paths.
-mkClrDir(p.OutputDirectory);
-outFilePaths = cell(1, numel(imageData.imFolders_));
-for i = p.ImFolderIndex
-    outFilePaths{1,i} = [p.OutputDirectory filesep 'ch' num2str(i)]; % save image output per chan
-    outFilePaths{2,i} = [p.OutputDirectory]; % save .mat files for all channels
-    mkClrDir(outFilePaths{1,i}); % no need to do mkClrDir(outFilePaths{2,i}) here.
+imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
+mkClrDir(imageOutputDirectory);
+outFilePaths = cell(2, numel(imageData.imFolders_));
+for iImFolder = p.ImFolderIndex
+    outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+    outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+    mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
 end
-thisProc.setOutFilePaths(outFilePaths);
+allOutFilePaths{1,iImD} = outFilePaths;
+
+end
+
+
+% logging input/output paths on the ImL level.
+thisProc.setInFilePaths(allInFilePaths);
+thisProc.setOutFilePaths(allOutFilePaths);
+
+
+% Run below Algorithm on the ImD level:
+
+
+for iImD = imageDataIndex
+    imageData = ImDs{1, iImD};
+    inFilePaths = allInFilePaths{1,iImD};
+    outFilePaths = allOutFilePaths{1,iImD};
 
 
 %% Algorithm
-% See module 1 loading and module 2 prepAlign: cropping, padding (resize), flipping in scriptFishAtlas4Jenny_QZ.m
+% Package process mapping:
+% Process 1 FishPreProcessingProcess wraps modules 1-2 from
+% scriptFishAtlas4Jenny_QZ.m:
+%   module 1: loading
+%   module 2: prepAlign: cropping, padding (resize), flipping
 % I rewrote the algorithm to the way how ImD handel paths and files. - QZ
 
 %% module 1: loading
 %load all channels for all fish
-saveDirectory = p.OutputDirectory;
+saveDirectory = outFilePaths{2,p.ImFolderIndex(1)};
 
 tic;
 
 % directory read the number of fish from the folder
-% newDir = dir(inFilePaths{1,1});
-% foldername = {newDir.name};
-% %remove hidden folders
-% foldername (ismember(foldername,[{'.'}, {'..'}])) =[];
-% % find the fish index from the folder automatically
-% fileList = cellfun(@(x) str2double(regexp(x, '\d+', 'match')), foldername)';
-for k = p.ImFolderIndex
-    imFileNamesF = imageData.getImageFileNames(k);
-    foldername{k,:} = imFileNamesF{1}'; % Rewrote so files name in ch1 and ch2 does not need to be the same. -QZ
-end
+newDir = dir(inFilePaths{1,1});% only got the 1st channel file names, why? - QZ
+foldername = {newDir.name};
+%remove hidden folders
+foldername (ismember(foldername,[{'.'}, {'..'}])) =[];
+% find the fish index from the folder automatically
+fileList = cellfun(@(x) str2double(regexp(x, '\d+', 'match')), foldername)';
+% for k = p.ImFolderIndex
+%     imFileNamesF = imageData.getImageFileNames(k);
+%     foldername{k,:} = imFileNamesF{1}'; % Rewrote so files name in ch1 and ch2 does not need to be the same. -QZ
+% end
 
-% nFish = length(fileList);
 nFish = imageData.imFolders_(1).nImages_;
 nChannel = numel(imageData.imFolders_);
 for iFile = 1: nFish
     clear imagetmp
     for iChannel = 1: nChannel
-        filename = foldername{iChannel,1}(iFile);
+        filename = foldername(iFile);
         channelPath = inFilePaths{1,iChannel};
         % image are not exactly same size that is why I need to load as
         % cell array fishImage{iFile,iChannel} =
@@ -144,15 +191,15 @@ for iFile = 1:nFish
 
     %find the maximum size across the fish images to resize them for
     %alignment
-    SZ(iFile,:) = size(croppedImage_hwc);
-    maxSZ(1) = max(maxSZ(1),SZ(iFile,1));
-    maxSZ(2) = max(maxSZ(2),SZ(iFile,2));
+    sizeImage(iFile,:) = size(croppedImage_hwc);
+    maxSZ(1) = max(maxSZ(1),sizeImage(iFile,1));
+    maxSZ(2) = max(maxSZ(2),sizeImage(iFile,2));
     croppedFishImage{iFile,1} = croppedImage_hwc;
 end
 
 %check if all fish haspointDetectionFish a minimum padding, if not add more
 %padding to all
-diffSZ = maxSZ - SZ(:,1:2);
+diffSZ = maxSZ - sizeImage(:,1:2);
 if any(diffSZ < p.padding_minTickness )
     maxSZ = maxSZ + p.padding_minTickness ;
 end
@@ -160,7 +207,7 @@ end
 % step 2-2: padding
 for iFile = 1:nFish
     image_hwc = croppedFishImage{iFile};
-    diffSZ = maxSZ - SZ(iFile, 1:2);
+    diffSZ = maxSZ - sizeImage(iFile, 1:2);
     PaddingImage_hwc = addBlackBorder2D(image_hwc, diffSZ);
     paddingFishImage{iFile,1} = PaddingImage_hwc;
     SZ_padding(iFile, : ) = size(PaddingImage_hwc);
@@ -181,7 +228,15 @@ savePath = saveDirectory;
 save(fullfile(savePath,'fishImages.mat'),'fishImage', 'croppedFishImage','flippingFishImage');
 save(fullfile(savePath,'fishImage_4Reg.mat'),'fishImage_hwc');
 
-% QZ TODO: need to save fishImage_hwc as individual images in diff channel paths, i.e. outFilePaths{1,i}
+% save tif files:
+for iChannel = 1:nChannel
+    savePath1 = outFilePaths{1,iChannel};
+    for iFile = 1:nFish
+        s = sprintf('fish%04d.tif',fileList(iFile));
+        imagetmp = fishImage_hwc{iFile}(:,:,iChannel);
+        imwrite(im2uint8(imagetmp), fullfile(savePath1, s));
+    end
+end
 
 % save parameters
 % save(fullfile(saveDirectory,'params.mat'), 'params');
@@ -190,5 +245,6 @@ save(fullfile(savePath,'fishImage_4Reg.mat'),'fishImage_hwc');
 
 toc
 
-disp('Finished fish images pre-processing!')
+end
 
+disp('Finished fish images pre-processing!')
