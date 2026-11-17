@@ -13,7 +13,8 @@ classdef NewFishATLASPackage < Package
     %                  wrapper: cancerDetectionWrap.m
     %   Module 6    -> Process 5 AccumulationProcess
     %                  wrapper: accumulationWrap.m
-    %   Module 7    -> separate future process (not implemented yet)
+    %   Module 7    -> Process 6 FishStatsAnalysisProcess
+    %                  wrapper: fishStatsAnalysisWrap.m
     %
     % Qiongjing (Jenny) Zou, Feb 2026
 %
@@ -65,12 +66,13 @@ classdef NewFishATLASPackage < Package
         end
 
         function m = getDependencyMatrix(i,j)
-            %    1 2 3 4 5  {processes}           
-            m = [0 0 0 0 0 ;  %1 FishPreProcessingProcess
-                 0 0 0 0 0 ;  %2 CreateReferenceImageProcess (optional)
-                 1 2 0 0 0 ;  %3 FishRegistrationProcess
-                 0 0 1 0 0 ;  %4 CancerDetectionProcess
-                 0 0 0 1 0 ;];%5 AccumulationProcess
+            %    1 2 3 4 5 6  {processes}
+            m = [0 0 0 0 0 0 ;  %1 FishPreProcessingProcess
+                 1 0 0 0 0 0 ;  %2 CreateReferenceImageProcess (optional)
+                 1 2 0 0 0 0 ;  %3 FishRegistrationProcess
+                 0 0 1 0 0 0 ;  %4 CancerDetectionProcess
+                 0 0 0 1 0 0 ;  %5 AccumulationProcess
+                 0 0 0 0 1 0 ;];%6 FishStatsAnalysisProcess
             if nargin<2, j=1:size(m,2); end
             if nargin<1, i=1:size(m,1); end
             m=m(i,j);
@@ -88,6 +90,7 @@ classdef NewFishATLASPackage < Package
                 @FishRegistrationProcess,...
                 @CancerDetectionProcess,...
                 @AccumulationProcess,...
+                @FishStatsAnalysisProcess,...
                                         };
             
             if nargin==0, index=1:numel(procContrs); end
@@ -101,6 +104,7 @@ classdef NewFishATLASPackage < Package
                 'FishRegistrationProcess',...
                 'CancerDetectionProcess',...
                 'AccumulationProcess',...
+                'FishStatsAnalysisProcess',...
                                         };
             if nargin==0, index=1:numel(classes); end
             classes=classes(index);

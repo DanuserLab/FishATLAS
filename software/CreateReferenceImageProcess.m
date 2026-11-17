@@ -1,4 +1,4 @@
-classdef  CreateReferenceImageProcess < ImLImageProcessingProcess & NonSingularProcess
+classdef  CreateReferenceImageProcess < ImageProcessingProcessImL & NonSingularProcess
     % Process Class for create reference image
     % createReferenceImageWrap.m is the wrapper function
     % CreateReferenceImageProcess is part of new FishATLAS Package
@@ -50,7 +50,7 @@ classdef  CreateReferenceImageProcess < ImLImageProcessingProcess & NonSingularP
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImLImageProcessingProcess(super_args{:});
+            obj = obj@ImageProcessingProcessImL(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -63,7 +63,7 @@ classdef  CreateReferenceImageProcess < ImLImageProcessingProcess & NonSingularP
         end
 
         function h = GUI(varargin)
-            h = @noSettingsProcessGUI % @CreateReferenceImageProcessGUI;
+            h = @CreateReferenceImageProcessGUI;
         end
         
         function funParams = getDefaultParams(owner, varargin)
@@ -83,7 +83,60 @@ classdef  CreateReferenceImageProcess < ImLImageProcessingProcess & NonSingularP
             funParams.ProcessIndex = []; % can use this parameter to set which previous process's output to be used as input for this process
 
 
+            % these 3 param will grab from the params in proc 1, actually just need vasChannel in this proc
+            % funParams.PreAlign.vasChannel = 1; % Name: Registration Channel ID, Deafult: 1, Doc: detemine the channel ID that should be used for registration
+            % funParams.PreAlign.cancerChannel = 2; % did not used in this module 3 - QZ; Name: Cancer Channel ID, Deafult: 2, Doc: detemine the channel ID for cancer channel
+            % funParams.PreAlign.nChannel = 2; % same as numel(owner.imFolders_), we do not need this param - QZ
+
+            % QZ - The Reg here is diff from the Step 3 FishRegistrationProcess? The params here do not link with params in proc 3 FishRegistrationProcess
+            funParams.rigid.RefImageID = []; % edit box % Name:Rigid Transform Image ID, no default,  Doc: image ID that used for rigid registration, select by user or randomly if it is empty
+            funParams.rigid.tformType = 'affine'; % popupmenu % Name:Rigid Transform Type, Option: {'translation', 'rigid', 'similarity', 'affine'}, Default: 'affine', Doc: This defines the geometric transformation applied during the rigid registration step
+            funParams.rigid.regmodel = 'monomodal'; % popupmenu %Name: Rigid Modality, Option:{'monomodal', 'multimodal'} Default: 'monomodal', Doc: This specifies the image modality used during the rigid registration step optimization
+            funParams.rigid.maxIter = 500; % edit box  %Name: Rigid Maximum Iteration, Default: 500, Doc: maximum iteration used for rigid registration step optimization
+            funParams.rigid.FilterMetric = 'corrCross'; % popupmenu %Name: Rigid Filter Metric, Option: {'MutualInfo','ssim','pHash','corrCross','MSE','featureExtract'}, Default: 'corrCross', Doc: This specifies a metric to compare each image with the reference image after rigid registration for removing bad registration
+            funParams.rigid.FilterThreshold = 0.7; % edit box  %Name : Rigid Filter Threshold, Default = 0.7, test script is 0.76. Doc: This threshold is used to remove the bad rigid registration image
+            funParams.nonRigid.maxIter = 800; % edit box  % DID NOT USED in this proc still put on GUI - QZ; Name: Nonrigid Maximum Iteration, Default: 800, Doc: maximum iteration used for nonrigid registration step optimization
+            funParams.nonRigid.GridRegularization = 2; % edit box  %Name: Nonrigid Grid Regularization, Default: 2, Doc: Weighing factor for grid displacement regularization for nonrigid step using "imregdeform" function in matlab, check doc "imregdeform"
+            funParams.nonRigid.NumPyramidLevels = 3; % edit box  %Name: Nonrigid Pyramid Level, Default: 3, Doc: Number of multiresolution pyramid levels, specified as a positive integer.for nonrigid step using "imregdeform" function in matlab, check doc "imregdeform"
+            funParams.nonRigid.FilterMetric = 'corrCross'; % popupmenu %Name: Nonrigid Filter Metric, Option: {'MutualInfo','ssim','pHash','corrCross','MSE','featureExtract'}, Default: 'corrCross', Doc: This specifies a metric to compare each image with the reference image after nonrigid registration for removing bad registration
+            funParams.nonRigid.FilterThreshold = 0.7; % edit box  %Name : Nonrigid Filter Threshold, Default = 0.7, test script is 0.82.  Doc: This threshold is used to remove the bad nonrigid registration image
+
+            funParams.RefImageFilter= 'laplacianFilter'; % hide on GUI - QZ
+
+            funParams.nonRigid.maxIterWhileLoop = 5; % hide on GUI - QZ % QZ: Used but not defined, see line 42 in my script params.Reg.nonRigid.maxIterWhileLoop = 5;
 
         end
+
+        % Below fcns are for popupmenus on GUI:
+        function validTypes =  getValid_rigid_tformType()
+            validTypes = {'translation', ...    
+                          'rigid',... 
+                          'similarity',...
+                          'affine'};
+        end
+
+        function validTypes =  getValid_rigid_regmodel()
+            validTypes = {'monomodal', ...    
+                          'multimodal'};
+        end
+
+        function validTypes =  getValid_rigid_FilterMetric()
+            validTypes = {'MutualInfo', ...    
+                          'ssim',... 
+                          'pHash',...
+                          'corrCross',...
+                          'MSE',...
+                          'featureExtract'};
+        end
+
+        function validTypes =  getValid_nonRigid_FilterMetric()
+            validTypes = {'MutualInfo', ...    
+                          'ssim',... 
+                          'pHash',...
+                          'corrCross',...
+                          'MSE',...
+                          'featureExtract'};
+        end
+
     end
 end

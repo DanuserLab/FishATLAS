@@ -2,7 +2,6 @@ function [weight_points binaryImage binaryImage4Dots] = measureWeightPointFish(c
    % measureWeightPointFish calculates the area of binary image around each
    % point as the weight for that point. Some areas have no point so they
    % will be filterred out
-    %normalize the image before thresholding
 %
 % Copyright (C) 2026, Danuser Lab - UTSouthwestern 
 %
@@ -23,11 +22,21 @@ function [weight_points binaryImage binaryImage4Dots] = measureWeightPointFish(c
 % 
 % 
     binaryImage4Dots = zeros(size(cancerImage));
-    %using multithreshold
-    thresh = multithresh(cancerImage,binaryNThresh);
+  
+    % %normalize the image before thresholding - this method fails because
+    % multithresh gives the lower value for unsaturated image. It is better
+    % % to remove background method and apply multithresh:
+    % cancerImage = im2double(cancerImage); % if I don't do it the normalization convert to 0 1 for uint8
+    % cancerImage = (cancerImage - min(cancerImage(:))) ./ (max(cancerImage(:)) - min(cancerImage(:)));
 
-    binaryImage = cancerImage;
-    binaryImage = single(cancerImage >= thresh(1)); 
+    %removing background noise
+    % background = imopen(cancerImage,strel('disk',20));
+    background = imgaussian(cancerImage,20); % use a large sigma = 20
+    cancerImagecorr = imsubtract(cancerImage,background);
+
+    %using multithreshold
+    thresh = multithresh(cancerImagecorr,binaryNThresh);
+    binaryImage = single(cancerImagecorr >= thresh(1)); 
 
     CC = bwconncomp(binaryImage);
     CC.PixelIdxList;

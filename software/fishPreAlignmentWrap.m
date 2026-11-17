@@ -78,6 +78,7 @@ allOutFilePaths = cell(1, numImDs);
 [packageOutputDirectory, processOutputName] = fileparts(p.OutputDirectory);
 [~, packageOutputName] = fileparts(packageOutputDirectory);
 mkClrDir(p.OutputDirectory);
+refNImFol = numel(ImDs{1, imageDataIndex(1)}.imFolders_);
 
 for iImD = imageDataIndex
     imageData = ImDs{1, iImD};
@@ -85,6 +86,9 @@ for iImD = imageDataIndex
 
 % Sanity Checks
 nImFol = numel(imageData.imFolders_);
+if nImFol ~= refNImFol
+    error('Number of Image Folders needs to be the same across all ImageData objects in the ImageList! Check ImageList input!');
+end
 if max(p.ImFolderIndex) > nImFol || min(p.ImFolderIndex)<1 || ~isequal(round(p.ImFolderIndex), p.ImFolderIndex)
     error('Invalid imFolder numbers specified! Check ImFolderIndex input!!')
 end
@@ -101,7 +105,50 @@ if ~all(nImages == nImages(1))
     error('Number of Images in each Image Folder needs to be the same! Check ImageData input!');
 end
 
-% QZ TODO - Do the fish file names in all channels need to be the same?
+% QZ added 3 below pre-conditions so the algorithm won't fail
+% Channel 1 is the canonical file list used by the algorithm below.
+if ~ismember(1, p.ImFolderIndex)
+    error('ImFolderIndex must include image folder 1!');
+end
+
+requiredImFolderIndex = 1;
+if isfield(p,'vasChannel') && ~isempty(p.vasChannel)
+    requiredImFolderIndex = unique([requiredImFolderIndex p.vasChannel]);
+end
+if isfield(p,'cancerChannel') && ~isempty(p.cancerChannel)
+    requiredImFolderIndex = unique([requiredImFolderIndex p.cancerChannel]);
+end
+if any(requiredImFolderIndex > nImFol) || any(requiredImFolderIndex < 1) || ~isequal(round(requiredImFolderIndex), requiredImFolderIndex)
+    error('vasChannel and cancerChannel must be valid image folder numbers! Check FishPreProcessingProcess parameters!');
+end
+if ~all(ismember(requiredImFolderIndex, p.ImFolderIndex))
+    error('ImFolderIndex must include channel 1, vasChannel, and cancerChannel for FishATLAS preprocessing.');
+end
+
+% The current algorithm loads all image folders, so all must be selected.
+if ~all(ismember(1:nImFol, p.ImFolderIndex))
+    error('ImFolderIndex must include all ImageData image folders!'); % fishPreAlignmentWrap currently loads all image folders
+end
+
+imFileNamesF = imageData.getImageFileNames(1);
+canonicalFileNames = imFileNamesF{1};
+if numel(canonicalFileNames) ~= nImages(1)
+    error('Image folder 1 must provide the canonical file list and match nImages_!');
+end
+
+numericMatches = regexp(canonicalFileNames, '\d+', 'match');
+if any(cellfun(@numel, numericMatches) ~= 1)
+    error('Each filename in image folder 1 must contain exactly one numeric fish ID!');
+end
+
+% All image folders must have the same filenames in the same order.
+for iImFolder = 2:nImFol
+    imFileNamesF = imageData.getImageFileNames(iImFolder);
+    if ~isequal(imFileNamesF{1}, canonicalFileNames)
+        error('All image folders must have the same filenames in the same order! Image folder %d does not match image folder 1.', iImFolder);
+    end
+end
+
 
 % logging input paths (bookkeeping)
 inFilePaths = cell(1, numel(imageData.imFolders_));
@@ -156,7 +203,7 @@ tic;
 newDir = dir(inFilePaths{1,1});% only got the 1st channel file names, why? - QZ
 foldername = {newDir.name};
 %remove hidden folders
-foldername (ismember(foldername,[{'.'}, {'..'}])) =[];
+foldername(ismember(foldername,[{'.'}, {'..'}])) =[];
 % find the fish index from the folder automatically
 fileList = cellfun(@(x) str2double(regexp(x, '\d+', 'match')), foldername)';
 % for k = p.ImFolderIndex
@@ -169,7 +216,7 @@ nChannel = numel(imageData.imFolders_);
 for iFile = 1: nFish
     clear imagetmp
     for iChannel = 1: nChannel
-        filename = foldername(iFile);
+        filename = foldername{iFile};
         channelPath = inFilePaths{1,iChannel};
         % image are not exactly same size that is why I need to load as
         % cell array fishImage{iFile,iChannel} =

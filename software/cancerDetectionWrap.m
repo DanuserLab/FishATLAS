@@ -80,6 +80,13 @@ else
 end
 fishRegProcessingProc = imageList.processes_{iFishRegProcessingProc};
 
+% Find the index of FishPreProcessingProcess for the cancer channel used in this step:
+iFishPreProcessingProc = imageList.getProcessIndex('FishPreProcessingProcess',1,true); % nDesired = 1 ; askUser = true
+if isempty(iFishPreProcessingProc)
+    error('FishPreProcessingProcess needs to be done before run this process.')
+end
+fishPreProcessingProc = imageList.processes_{iFishPreProcessingProc};
+
 ImDs = cell(1, numImDs);
 for iImD = imageDataIndex
     ImDs{iImD} = ImageData.load(imageList.imageDataFile_{1,iImD});
@@ -107,7 +114,7 @@ for iImD = imageDataIndex
     % logging input paths (bookkeeping)
     inFilePaths = cell(1, numel(imageData.imFolders_));
     for iImFolder = p.ImFolderIndex
-        inFilePaths{1,iImFolder} = fishRegOutFilePaths{2,iImFolder}; % use .mat files as input
+        inFilePaths{1,iImFolder} = fishRegOutFilePaths{3,iImFolder}; % use .mat files as input
     end
     allInFilePaths{1,iImD} = inFilePaths;
 
@@ -144,6 +151,7 @@ for iImD = imageDataIndex
 % Module 5-2 is currently only a proliferation-marker placeholder in the script.
 % I kept the algorithm most unchanged, just change the way how ImD handles params and input/output paths.. - QZ
 params.pointDetection = p;
+p.cancerChannel = fishPreProcessingProc.funParams_.cancerChannel; % ImL level param - QZ
 
 tic;
 saveDirectory = outFilePaths{2,p.ImFolderIndex(1)};
@@ -159,7 +167,7 @@ refImagePath = fullfile(inFilePaths{1,p.ImFolderIndex(1)}, 'RefImage.tif');
 if exist(refImagePath, 'file')
     RefImage = tiffreadVolume(refImagePath);
 else
-    RefImage = tiffreadVolume(fullfile(fishRegProcessingProc.funParams_.RefImagePath,fishRegProcessingProc.funParams_.RefImageName));
+    RefImage = tiffreadVolume(fishRegProcessingProc.funParams_.RefImagePath);
 end
 SZ_RefImg = size(RefImage);
 SZ_fishImage = size(cancerImage);
@@ -209,24 +217,24 @@ for iFile = 1: size(cancerImage,3)
     Ind_good = find(pstruct.A >= IntensityThresh);
     ptCloudCoor = [X(Ind_good), Y(Ind_good)] ;
     if params.pointDetection.plotFlag
-        figure('Visible','off');
+        hFig = figure('Visible','off');
         imshow(cancerImage(:,:,iFile),[0 round(max(imagetmp(:))/10)])
         hold on
         plot(X,Y,'.r','MarkerSize',25)
         plot(ptCloudCoor(:,1),ptCloudCoor(:,2),'.g','MarkerSize',20)
         hold off
         s = sprintf('fish%04dDots.tif',iFile);
-        saveas(gcf,fullfile(savePath2,s))
+        saveas(hFig,fullfile(savePath2,s))
         imshow(cancerImage(:,:,iFile),[0 round(max(imagetmp(:))/10)])
         s = sprintf('fish%04d.tif',iFile);
-        saveas(gcf,fullfile(savePath2,s))
-        close("all")
+        saveas(hFig,fullfile(savePath2,s))
+        close(hFig)
     end
     %resize coordinate to match the reference image (alternative is to
     %imresize cancer image before point source but it cause extra fake
     %poitns)
     X = params.pointDetection.Scale(1).*X;
-    Y = params.pointDetection.Scale(1).*Y;
+    Y = params.pointDetection.Scale(2).*Y; % QZ bug fixed, was Scale(1).-2026-9-9
     ptCloudCoorScale = ptCloudCoor.*params.pointDetection.Scale;
 
     % save in a cell array
@@ -285,6 +293,7 @@ mkdir(savePath2);
 % step5-4: apply the registration fields
 rigidPoints = cell(size(cancerImage,3),1);
 nonRigidPoints = cell(size(cancerImage,3),1);
+clear binaryRigidReg binarynonRigidReg % QZ bug fixed
 
 for iFile = 1: size(cancerImage,3)
 
@@ -310,22 +319,24 @@ for iFile = 1: size(cancerImage,3)
     rigidPoints{iFile,1} = transformed_Coord;
 
     if params.pointDetection.plotFlag
-        plot(Coord(:,1),Coord(:,2),'.')
-        hold on
-        plot(transformed_Coord(:,1),transformed_Coord(:,2),'.')
+        hFig = figure('Visible','off');
+        hAx = axes('Parent', hFig);
+        plot(hAx, Coord(:,1),Coord(:,2),'.')
+        hold(hAx, 'on')
+        plot(hAx, transformed_Coord(:,1),transformed_Coord(:,2),'.')
 
-        plot(nonRigidTransformed_Coordtmp(:,1),nonRigidTransformed_Coordtmp(:,2),'o');
-        legend('original','rigid', 'nonrigid')
-        xlim([0 size(DF,2)])
-        ylim([0 size(DF,1)])
-        set(gcf, 'Position',[50 50 1300 500])
-        set(gca,'XAxisLocation','top','YAxisLocation','left','ydir','reverse');
+        plot(hAx, nonRigidTransformed_Coordtmp(:,1),nonRigidTransformed_Coordtmp(:,2),'o');
+        legend(hAx, 'original','rigid', 'nonrigid')
+        xlim(hAx, [0 size(DF,2)])
+        ylim(hAx, [0 size(DF,1)])
+        set(hFig, 'Position',[50 50 1300 500])
+        set(hAx,'XAxisLocation','top','YAxisLocation','left','ydir','reverse');
 
         s = sprintf('fish%04dDots_Reg.png',iFile); %
-        saveas(gcf,fullfile(savePath2,s))
+        saveas(hFig,fullfile(savePath2,s))
         % s = sprintf('fish%04d.mat',iFile); %
         % save(fullfile(saveDirectory,s),'nonRigidTransformed_Coordtmp','transformed_Coordtmp','Coordtmp')
-        close(gcf)
+        close(hFig)
     end
 
     % transfer binaryImage if they are created

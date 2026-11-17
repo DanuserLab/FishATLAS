@@ -20,8 +20,9 @@
 % 
 % 
 
-clear
+% Note when set up dataset for CI, need to check fishBodyfilePath too.
 
+clear
 %% ImageList creation
 
 if ispc
@@ -42,8 +43,10 @@ for iCondition = 1:numel(conditionNames)
     imFolder(2) = ImFolder(fullfile(conditionDir, 'ch2'));
     imFolder
 
-    ImD = ImageData(imFolder, conditionDir); % saveFolder here is ImD's outputDirectory_
-    ImD.setPath(conditionDir); % set imageDataPath_, where to save .mat file
+    saveFolder = [conditionDir filesep 'Analysis20261113']
+    if ~isdir(saveFolder) mkdir(saveFolder); end
+    ImD = ImageData(imFolder, saveFolder); % saveFolder here is ImD's outputDirectory_
+    ImD.setPath(saveFolder); % set imageDataPath_, where to save .mat file
     ImD.setFilename('imageData.mat');
 
     % Set some additional image data properties
@@ -59,11 +62,11 @@ for iCondition = 1:numel(conditionNames)
 
     %% Load the image data contents
     clear ImD; % verify we can reload the object as intended.
-    ImDs{iCondition} = ImageData.load(fullfile(conditionDir,'imageData.mat')); % if isMatFile, also does ImD.sanityCheck
+    ImDs{iCondition} = ImageData.load(fullfile(saveFolder,'imageData.mat')); % if isMatFile, also does ImD.sanityCheck
     ImDs{iCondition}
 end
 
-imageListAnalysisDir = fullfile(dataRoot, 'AnalysisImLPack20260521');
+imageListAnalysisDir = fullfile(dataRoot, 'AnalysisImLPack20261113');
 if ~isdir(imageListAnalysisDir) mkdir(imageListAnalysisDir); end
 ImL = ImageList(ImDs, imageListAnalysisDir);
 ImL.setPath(imageListAnalysisDir);
@@ -86,7 +89,7 @@ disp('|| Available Package Process Steps ||');
 disp('=====================================');
 disp(ImL.getPackage(1).getProcessClassNames');
 
-steps2Test = [1 2 3 4 5];
+steps2Test = [1 2 3 4 5 6];
 assert(length(Package_.processes_) >= length(steps2Test));
 assert(length(Package_.processes_) >= max(steps2Test));
 disp('Selected Package Process Steps');
@@ -118,6 +121,9 @@ step_ = 2;
 ImL.getPackage(iPack).createDefaultProcess(step_)
 params = ImL.getPackage(iPack).getProcess(step_).funParams_;
 
+params.rigid.FilterThreshold = 0.76; % default is 0.7;
+params.nonRigid.FilterThreshold = 0.82; % default is 0.7;
+
 ImL.getPackage(iPack).getProcess(step_).setPara(params);
 ImL.save;
 params = ImL.getPackage(iPack).getProcess(step_).funParams_
@@ -132,13 +138,14 @@ step_ = 3;
 ImL.getPackage(iPack).createDefaultProcess(step_)
 params = ImL.getPackage(iPack).getProcess(step_).funParams_;
 
-params.useRefImage = 1; % use the reference image; Can also run with 0 - no RefImage.
-params.RefImagePath = dataRoot;
+params.useRefImage = 0; % use the reference image; Can also run with 0 - no RefImage, create RefImg per ImD.
+% params.RefImagePath = fullfile(dataRoot, 'RefImageAll.tif'); % QZ should NOT use same RefImage for all ImDs...
+params.nonRigid.FilterThreshold = 0.82; % default is 0.7;
 
 ImL.getPackage(iPack).getProcess(step_).setPara(params);
 ImL.save;
 params = ImL.getPackage(iPack).getProcess(step_).funParams_
-ImL.getPackage(iPack).getProcess(step_).run(); % took 21 min!
+ImL.getPackage(iPack).getProcess(step_).run(); % took 21 min! x2
 
 %% Step 4: CancerDetectionProcess
 disp('===================================================================');
@@ -168,6 +175,33 @@ ImL.save;
 params = ImL.getPackage(iPack).getProcess(step_).funParams_
 ImL.getPackage(iPack).getProcess(step_).run();
 
+
+%% Step 6: FishStatsAnalysisProcess
+disp('===================================================================');
+disp('Running (6th) FishStatsAnalysisProcess'); 
+disp('===================================================================');
+iPack = 1;
+step_ = 6;
+ImL.getPackage(iPack).createDefaultProcess(step_)
+params = ImL.getPackage(iPack).getProcess(step_).funParams_;
+
+params.nonRigid.FilterMetric = 'MutualInfo'; % Default: 'corrCross'
+params.nonRigid.FilterThreshold  = 0.4; % Default is 0.7
+params.usefishBodyImage = 1; % set to 1 to use own fishBody mask to avoid manual clicking, so CI won't stop.
+% this params.fishBodyfilePath be created in the analysis if it is empty, but it will stop auto CI, so I provided it here:
+if ispc
+    params.fishBodyfilePath = 'C:\Users\s184919\Documents\Data\NewFishATLASPackWriting202511\testScript\data4Jenny\fishBodyImage.tif';
+elseif isunix
+    params.fishBodyfilePath = '/work/bioinformatics/s184919/Analysis/Hanieh/202511NewFishATLASPack/testScript/data4Jenny/fishBodyImage.tif';
+end
+% params.nMark = 10; % reduce from 50 to 10 click while testing % this is not automatically, so CI test will stop. - QZ
+params.ManualRegion.Flag = 0; % QZ set to 0 to skip clicking for ManualRegion mask, so CI won't stop.
+% params.ManualRegion.nMark = 10; % reduce from 40 to 10 click while testing % this is not automatically, so CI test will stop. - QZ
+
+ImL.getPackage(iPack).getProcess(step_).setPara(params);
+ImL.save;
+params = ImL.getPackage(iPack).getProcess(step_).funParams_
+ImL.getPackage(iPack).getProcess(step_).run(); % took 10-15min on Windows PC, may stop for a long time in the middle.
 
 %% test NewFishATLASPackage GUI:
 % method 0

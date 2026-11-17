@@ -1,4 +1,4 @@
-classdef  AccumulationProcess < ImLImageProcessingProcess & NonSingularProcess
+classdef  AccumulationProcess < ImageProcessingProcessImL & NonSingularProcess
     % Process Class for accumulation
     % accumulationWrap.m is the wrapper function
     % AccumulationProcess is part of new FishATLAS Package
@@ -50,7 +50,7 @@ classdef  AccumulationProcess < ImLImageProcessingProcess & NonSingularProcess
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImLImageProcessingProcess(super_args{:});
+            obj = obj@ImageProcessingProcessImL(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -63,7 +63,7 @@ classdef  AccumulationProcess < ImLImageProcessingProcess & NonSingularProcess
         end
 
         function h = GUI(varargin)
-            h = @noSettingsProcessGUI % @AccumulationProcessGUI;
+            h = @AccumulationProcessGUI;
         end
         
         function funParams = getDefaultParams(owner, varargin)
@@ -83,9 +83,10 @@ classdef  AccumulationProcess < ImLImageProcessingProcess & NonSingularProcess
             funParams.ProcessIndex = []; % can use this parameter to set which previous process's output to be used as input for this process
 
 
-            funParams.removeOutsides = 1;
-            funParams.fishBodyImage = ''; % GUI should be able to select single tif file as fishBodyImage. - QZ
-            funParams.fishBodyImageDir = ''; % folder of a binaryImage of fish body - QZ
+            funParams.removeOutsides = 1; % hide
+            funParams.usefishBodyImage = 0; % check box with callback % name: Use Fish Body Mask - QZ added this param for GUI.
+            % funParams.fishBodyImage = ''; % Name FishBody Image Name,Default = '', Doc: tif file name as fish body image, define the inside for point detection
+            funParams.fishBodyImageDir = ''; % This is a whole path of a binary Image fishBodyImage tif file from the GUI. which diff from the folder Hanieh originally set. - QZ
 
         end
     end

@@ -1,4 +1,4 @@
-classdef  CancerDetectionProcess < ImLImageProcessingProcess & NonSingularProcess
+classdef  CancerDetectionProcess < ImageProcessingProcessImL & NonSingularProcess
     % Process Class for cancer detection and apply registration map on cancer image/dots
     % cancerDetectionWrap.m is the wrapper function
     % CancerDetectionProcess is part of new FishATLAS Package
@@ -50,7 +50,7 @@ classdef  CancerDetectionProcess < ImLImageProcessingProcess & NonSingularProces
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImLImageProcessingProcess(super_args{:});
+            obj = obj@ImageProcessingProcessImL(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -63,7 +63,7 @@ classdef  CancerDetectionProcess < ImLImageProcessingProcess & NonSingularProces
         end
 
         function h = GUI(varargin)
-            h = @noSettingsProcessGUI % @CancerDetectionProcessGUI;
+            h = @CancerDetectionProcessGUI;
         end
         
         function funParams = getDefaultParams(owner, varargin)
@@ -83,19 +83,16 @@ classdef  CancerDetectionProcess < ImLImageProcessingProcess & NonSingularProces
             funParams.ProcessIndex = []; % can use this parameter to set which previous process's output to be used as input for this process
 
 
-            funParams.cancerChannel = 2; % was params.PreAlign.cancerChannel = 2 in Hanieh's script, only used in Step 4: Cancer Detection
+            % funParams.cancerChannel = 2; % QZ grab from the params in proc 1; % was params.PreAlign.cancerChannel = 2 in Hanieh's script, only used in Step 4: Cancer Detection
 
-            funParams.plotFlag = 1;
-            funParams.intensityPerctile = 50;
-            funParams.Sigma = 6;
-            funParams.Alpha = 0.0005;
-            funParams.maxIntensityRateThresh = 0.04; % ..% below max is discarded
-            funParams.IntensityThresh = 10; % absolute value
-            funParams.weightNThresh = 2;
-            funParams.weightFlag = 1; % it can be the flag for the binary image. 
-            funParams.Scale = [1 1]; % may need to scale coordinate if refImage is bigger/smaller than cancerimage
-            funParams.plotFlag = 1; % create points on cancer channel for each fish and save it.
 
+            funParams.Sigma = 6; % Name: Sigma, Default: 6, Doc: sigma used in pointSourceDetection fucntion to detect cancer colonies, larger value for large colonies
+            funParams.Alpha = 0.0005; % Name: Alpha, Default: 0.0005, Doc: pvalue (alpha) used in pointSourceDetection fucntion to detect cancer colonies, lower value to discard noise
+            funParams.maxIntensityRateThresh = 0.04; % Name: Internsity Threshold, Default: 0.04, Doc:maximum intensity ratio of the brightest signal to discard dim signals as background % ..% below max is discarded
+            funParams.weightNThresh = 2; % Name: Cancer Threshold,  Default: 2, Doc:Set of threshold values used to binarize an cancer channel image, check doc "multithresh"
+            funParams.weightFlag = 1; % hide % it can be the flag for the binary image. % QZ this must be 1, otherwise algorithm error.
+            funParams.Scale = [1 1]; % hide % may need to scale coordinate if refImage is bigger/smaller than cancerimage
+            funParams.plotFlag = 1; % hide
         end
     end
 end

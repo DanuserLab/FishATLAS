@@ -116,9 +116,11 @@ for iImD = imageDataIndex
     mkClrDir(imageOutputDirectory);
     outFilePaths = cell(2, numel(imageData.imFolders_));
     for iImFolder = p.ImFolderIndex
-        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
-        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
-        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder) filesep 'rigid']; % save image output per chan
+        outFilePaths{2,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder) filesep 'nonrigid'];
+        outFilePaths{3,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{3,iImFolder}) here.
+        mkClrDir(outFilePaths{2,iImFolder}); 
     end
     allOutFilePaths{1,iImD} = outFilePaths;
 end
@@ -147,7 +149,7 @@ params.Reg = p;
 % two modes: 1) no refImage; 2) refImage
 tic
 %create a folder for saving this module seperatedly
-savePath = outFilePaths{2,p.ImFolderIndex(1)};
+savePath = outFilePaths{3,p.ImFolderIndex(1)};
 
 %step 4-1: take the channel for registeration from all fish Image
 load([inFilePaths{1,p.ImFolderIndex(1)} filesep 'fishImage_4Reg.mat']); % load output fishImage_hwc from FishPreProcessingProcess - QZ
@@ -159,12 +161,14 @@ fileList = cellfun(@(x) str2double(regexp(x, '\d+', 'match', 'once')), imFileNam
 if any(isnan(fileList))
     fileList = (1:nFish)';
 end
-prealignedImage = prealignedImage(:,:,p.vasChannel:nChannel:end);
+p.PreAlign.vasChannel = fishPreProcessingProc.funParams_.vasChannel; % ImL level param - QZ
+prealignedImage = prealignedImage(:,:,p.PreAlign.vasChannel:nChannel:end);
 
 % step 4-2
 if params.Reg.useRefImage
     %load reference image - anything!
-    RefImage = tiffreadVolume(fullfile(params.Reg.RefImagePath,params.Reg.RefImageName));
+    % RefImage = tiffreadVolume(fullfile(params.Reg.RefImagePath,params.Reg.RefImageName));
+    RefImage = tiffreadVolume(params.Reg.RefImagePath); % RefImagePath is the whole path of tif file now. - QZ
 
     % make the same size - how to deal with low resolution one, should I
     % add the pad or imresize
@@ -173,7 +177,7 @@ if params.Reg.useRefImage
     %compare the size and resize it to the original size of the refrence
     %image --> cancer channel should be rescale after point detection
     %(otherwise some fake local maxima due to interpolation)
-    if SZ_RefImg ~= SZ_fishImage(1:2)
+    if ~isequal(SZ_RefImg, SZ_fishImage(1:2))
         prealignedImage = nan([SZ_RefImg size(fishImage_hwc,1)]);
         for iFile = 1: size(fishImage_hwc,1)
             imageFishtmp = fishImage_hwc{iFile};
@@ -184,7 +188,7 @@ if params.Reg.useRefImage
         fishImage_hwc_resize = fishImage_hwc;
     end
     prealignedImage = cat(3,fishImage_hwc_resize{:});
-    prealignedImage = prealignedImage(:,:,p.vasChannel:nChannel:end);
+    prealignedImage = prealignedImage(:,:,p.PreAlign.vasChannel:nChannel:end);
 
     % do pairwise rigid rgisteration
     [optimizer, metric] = imregconfig(params.Reg.rigid.regmodel);
@@ -408,13 +412,13 @@ else     % if there is no reference image, do groupwise registration
     save(fullfile(savePath, 'RefImage.mat'),'RefImage');
     imwrite(RefImage, fullfile(savePath, 'RefImage.tif'));
 
-    %save in the params that we can use later for point pattern
-    params.Reg.RefImagePath = savePath;
-    params.Reg.RefImageName = 'RefImage.tif';
+    % %save in the params that we can use later for point pattern
+    % params.Reg.RefImagePath = savePath;
+    % params.Reg.RefImageName = 'RefImage.tif';
 end
 
 % save tif files for rigid registration
-savePath1 = [savePath filesep 'rigid' filesep 'ch' num2str(p.vasChannel)];
+savePath1 = [savePath filesep 'ch' num2str(p.PreAlign.vasChannel) filesep 'rigid'];
 if ~isdir(savePath1) mkdir(savePath1); end
 for iFile = 1:nFish
     s = sprintf('fish%04d.tif',fileList(iFile));
@@ -423,7 +427,7 @@ for iFile = 1:nFish
 end
 
 % save tif files for nonrigid registration
-savePath1 = [savePath filesep 'nonrigid' filesep 'ch' num2str(p.vasChannel)];
+savePath1 = [savePath filesep 'ch' num2str(p.PreAlign.vasChannel) filesep 'nonrigid'];
 if ~isdir(savePath1) mkdir(savePath1); end
 for iFile = 1:nFish
     s = sprintf('fish%04d.tif',fileList(iFile));
@@ -432,11 +436,13 @@ for iFile = 1:nFish
 end
 
 % transfer and save the cancer/second channel
-cancerChannel = 2;
+cancerChannel = fishPreProcessingProc.funParams_.cancerChannel; % ImL level param - QZ
 if nChannel >= cancerChannel
-    savePath1 = [savePath filesep 'rigid' filesep 'ch' num2str(cancerChannel)];
+    % Reset transferred cancer-channel arrays for each ImageData condition.
+    clear rigidImage_ch2 nonRigidImage_ch2 % QZ bug fixed
+    savePath1 = [savePath filesep 'ch' num2str(cancerChannel) filesep 'rigid'];
     if ~isdir(savePath1) mkdir(savePath1); end
-    savePath2 = [savePath filesep 'nonrigid' filesep 'ch' num2str(cancerChannel)];
+    savePath2 = [savePath filesep 'ch' num2str(cancerChannel) filesep 'nonrigid'];
     if ~isdir(savePath2) mkdir(savePath2); end
     for iFile = 1:nFish
         s = sprintf('fish%04d.tif',fileList(iFile));

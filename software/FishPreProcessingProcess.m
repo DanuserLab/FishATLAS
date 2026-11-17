@@ -1,4 +1,4 @@
-classdef  FishPreProcessingProcess < ImLImageProcessingProcess & NonSingularProcess
+classdef  FishPreProcessingProcess < ImageProcessingProcessImL & NonSingularProcess
     % Process Class for loading the fish & prepAlign: cropping, padding (resize), flipping
     % fishPreAlignmentWrap.m is the wrapper function
     % FishPreProcessingProcess is part of new FishATLAS Package
@@ -50,7 +50,7 @@ classdef  FishPreProcessingProcess < ImLImageProcessingProcess & NonSingularProc
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImLImageProcessingProcess(super_args{:});
+            obj = obj@ImageProcessingProcessImL(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -158,7 +158,7 @@ classdef  FishPreProcessingProcess < ImLImageProcessingProcess & NonSingularProc
         end
 
         function h = GUI(varargin)
-            h = @noSettingsProcessGUI % @FishPreProcessingProcessGUI;
+            h = @FishPreProcessingProcessGUI;
         end
         
         function funParams = getDefaultParams(owner, varargin)
@@ -173,16 +173,16 @@ classdef  FishPreProcessingProcess < ImLImageProcessingProcess & NonSingularProc
             images = owner.getImages(1);
             sampleImD = images{1};
             funParams.ImageDataIndex = 1:owner.getSize();
-            funParams.ImFolderIndex = 1:numel(sampleImD.imFolders_);
+            funParams.ImFolderIndex = 1:numel(sampleImD.imFolders_); % QZ assume Number of Image Folders is the same across all ImageData objects. Did sanity check in wrapper fcn.
             funParams.OutputDirectory = [outputDir  filesep 'PreProcessing'];
 
 
-            % funParams.vasChannel = 1; % only used in Step 3: Registration
-            % funParams.cancerChannel = 2; % only used in Step 4: Cancer Detection
+            funParams.vasChannel = 1; % used in Step 2&3 % Name: Registration Channel ID, Deafult: 1, Doc: detemine the channel ID that should be used for registration
+            funParams.cancerChannel = 2; % used in Step 3 FishRegistrationProcess and 4 Cancer Detection % Name: Cancer Channel ID, Deafult: 2, Doc: detemine the channel ID for cancer channel
             % funParams.prolifChannel = 3; % did not use this param
             % funParams.nChannel = 2; % or three for Vasanth's data % same as numel(owner.imFolders_), we do not need this param - QZ
-            funParams.cropping_borderPX = 100; % add borderPX to the segmented region before cropping
-            funParams.padding_minTickness = 50;
+            funParams.cropping_borderPX = 100; % hide, Doc: Pixel margin around the segmented object during cropping step % add borderPX to the segmented region before cropping
+            funParams.padding_minTickness = 50; % hide, Doc: Image padding, making images same size
 
         end
     end

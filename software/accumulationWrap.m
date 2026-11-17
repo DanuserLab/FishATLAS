@@ -121,13 +121,14 @@ for iImD = imageDataIndex
     % logging output paths.
     imageOutputDirectory = fullfile(imageData.outputDirectory_, packageOutputName, processOutputName);
     mkClrDir(imageOutputDirectory);
-    outFilePaths = cell(2, numel(imageData.imFolders_));
-    for iImFolder = p.ImFolderIndex
-        outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
-        outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
-        mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
-    end
-    allOutFilePaths{1,iImD} = outFilePaths;
+    % this proc does not need to save output per chan:
+    % outFilePaths = cell(2, numel(imageData.imFolders_));
+    % for iImFolder = p.ImFolderIndex
+    %     outFilePaths{1,iImFolder} = [imageOutputDirectory filesep 'ch' num2str(iImFolder)]; % save image output per chan
+    %     outFilePaths{2,iImFolder} = imageOutputDirectory; % save .mat files for all channels
+    %     mkClrDir(outFilePaths{1,iImFolder}); % no need to do mkClrDir(outFilePaths{2,iImFolder}) here.
+    % end
+    allOutFilePaths{1,iImD} = imageOutputDirectory;
 end
 
 % logging input/output paths on the ImL level.
@@ -141,7 +142,6 @@ thisProc.setOutFilePaths(allOutFilePaths);
 for iImD = imageDataIndex
     imageData = ImDs{1, iImD};
     inFilePaths = allInFilePaths{1,iImD};
-    outFilePaths = allOutFilePaths{1,iImD};
 
 %% Algorithm
 % Package process mapping:
@@ -154,15 +154,15 @@ params.accumulation = p;
 tic;
 
 % savePath = [saveDirectory filesep 'Accumulation']; 
-savePath = outFilePaths{2,p.ImFolderIndex(1)}; % QZ
+savePath = allOutFilePaths{1,iImD}; % QZ
 
 % load a refImage
 fishRegOutFilePaths = fishRegProcessingProc.outFilePaths_{1,iImD};
-refImagePath = fullfile(fishRegOutFilePaths{2,p.ImFolderIndex(1)}, 'RefImage.tif');
+refImagePath = fullfile(fishRegOutFilePaths{3,p.ImFolderIndex(1)}, 'RefImage.tif');
 if exist(refImagePath, 'file')
     RefImage = tiffreadVolume(refImagePath);
 else
-    RefImage = tiffreadVolume(fullfile(fishRegProcessingProc.funParams_.RefImagePath, fishRegProcessingProc.funParams_.RefImageName));
+    RefImage = tiffreadVolume(fishRegProcessingProc.funParams_.RefImagePath);
 end
 
 % step 6-1: create nonrigid points and corresponding fishID
@@ -194,8 +194,8 @@ end
 % stpe 6-2: removing the outliers by masking the reference image --> fish
 % body:
 %load a binaryImage of fish body to define outliers
-if ~isempty(params.accumulation.fishBodyImage)
-    binaryImage = tiffreadVolume(fullfile(params.accumulation.fishBodyImageDir,params.accumulation.fishBodyImage));
+if params.accumulation.usefishBodyImage
+    binaryImage = tiffreadVolume(params.accumulation.fishBodyImageDir);
 else
     binaryImage = makeBinaryFishBody(RefImage);
     figure;

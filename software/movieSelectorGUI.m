@@ -159,6 +159,18 @@ if ~isempty(ip.Results.ML)
     end
 end
 
+% Populate image list to analyze
+if ~isempty(ip.Results.ImL)
+    userData.ImL=ip.Results.ImL;
+    % Populate images with the image list components if no ImD is passed
+    if isempty(ip.Results.ImD)
+        ImD = arrayfun(@(x) horzcat(x.getMovies{:}),userData.ImL,'Unif',0);
+        userData.ImD = horzcat(ImD{:});
+    else
+        userData.ImD = ImageData.empty(1,0);
+    end
+end
+
 % Populate movies to analyze
 if ~isempty(ip.Results.MD)
     userData.MD = horzcat(userData.MD,ip.Results.MD);
@@ -264,12 +276,12 @@ if strcmp(class, 'MovieList')
 elseif strcmp(class, 'MovieData')
     type = 'movie';
     field = 'MD'; 
-elseif strcmp(class, 'ImageData')
-    type = 'imageData';
-    field = 'ImD'; 
 elseif strcmp(class, 'ImageList')
     type = 'image list';
     field = 'ImL';
+elseif strcmp(class, 'ImageData')
+    type = 'image';
+    field = 'ImD'; 
 end
   
 if isempty(userData.(field))
@@ -322,7 +334,7 @@ set(handles.figure1,'UserData',userData);
 function pushbutton_delete_Callback(hObject, eventdata, handles)
 
 userData = get(handles.figure1, 'Userdata');
-if isempty(userData.MD) && isempty(userData.ImD) && isempty(userData.ImL), return;end
+if isempty(userData.MD) && isempty(userData.ImD), return;end
 
 % Delete channel object
 num = get(handles.listbox_movie,'Value');
@@ -421,7 +433,7 @@ function pushbutton_openlist_Callback(hObject, eventdata, handles)
 
 userData = get(handles.figure1, 'UserData');
 filespec = {'*.mat','MATLAB Files'};
-[filename, pathname] = uigetfile(filespec,'Select a movie list to load', ...
+[filename, pathname] = uigetfile(filespec,'Select a movie list or image list to load', ...
     userData.userDir);
 if ~any([filename pathname]), return; end
 userData.userDir = pathname;
@@ -429,7 +441,7 @@ userData.userDir = pathname;
 % Check if reselect the movie list that is already in the listbox
 movieListPaths = get(handles.listbox_movieList, 'String');
 if any(strcmp([pathname filename], movieListPaths))
-    errordlg('This movie list has already been opened.','Error','modal');
+    errordlg('This movie list or image list has already been opened.','Error','modal');
     return
 end
 
@@ -451,8 +463,8 @@ try
         end
     end
 catch ME
-    msg = sprintf('Movie: %s\n\nError: %s\n\nMovie is not successfully loaded. Please refer to movie detail and adjust your data.', [pathname filename],ME.message);
-    errordlg(msg, 'Movie error','modal');
+    msg = sprintf('Movie or image: %s\n\nError: %s\n\nMovie or image is not successfully loaded. Please refer to movie or image detail and adjust your data.', [pathname filename],ME.message);
+    errordlg(msg, 'Error','modal');
     return
 end
 if isImageList
@@ -584,6 +596,60 @@ catch ME
     return
 end
 userData.ML = horzcat(userData.ML, ML);
+set(handles.figure1,'UserData',userData);
+refreshDisplay(hObject, eventdata, handles)
+
+% --- Executes on button press in pushbutton_save_ImL.
+function pushbutton_save_ImL_Callback(hObject, eventdata, handles)
+
+userData = get(handles.figure1, 'UserData');
+
+if isempty(userData.ImD)
+    warndlg('No images selected. Please create new image data or open existing image data or image list.', 'No image Selected', 'modal')
+    return
+end
+
+if isempty(userData.ImL)
+    imageListPath = [userData.userDir filesep];
+    imageListFileName = 'imageList.mat';
+else
+    imageListPath = userData.ImL(end).imageListPath_;
+    imageListFileName = userData.ImL(end).imageListFileName_;
+end
+
+% Ask user where to save the image data file
+[filename,path] = uiputfile('*.mat','Find a place to save your image list',...
+             [imageListPath filesep imageListFileName]);         
+if ~any([filename,path]), return; end
+
+listPaths = arrayfun(@getFullPath,userData.ImL,'Unif',false);
+if any(strcmp([path filename], listPaths))
+    user_response = questdlg(['Are you sure to want to overwrite the list '...
+        'with the current selection of images? All analysis performed at the '...
+        'list level will be lost.'], ...
+        'Movie Listbox', 'Yes','No','Yes');
+    if strcmpi('no', user_response), return; end
+    iList = strcmp([path filename], listPaths);
+    outputDir = userData.ImL(iList).outputDirectory_;
+    delete(userData.ImL(iList));
+    userData.ImL(iList) = [];
+else
+    % Ask user where to select the output directory of the
+    outputDir = uigetdir(path,'Select a directory to store the list analysis output');
+    if isequal(outputDir,0), return; end
+end
+
+try
+    ImL = ImageList(userData.ImD, outputDir);
+    ImL.setPath(path);
+    ImL.setFilename(filename);
+    ImL.sanityCheck;
+catch ME
+    msg = sprintf('%s\n\nImage list is not saved.', ME.message);
+    errordlg(msg, 'Image List Error', 'modal')
+    return
+end
+userData.ImL = horzcat(userData.ImL, ImL);
 set(handles.figure1,'UserData',userData);
 refreshDisplay(hObject, eventdata, handles)
 

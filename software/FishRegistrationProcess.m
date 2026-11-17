@@ -1,4 +1,4 @@
-classdef  FishRegistrationProcess < ImLImageProcessingProcess & NonSingularProcess
+classdef  FishRegistrationProcess < ImageProcessingProcessImL & NonSingularProcess
     % Process Class for fish registration
     % fishRegistrationWrap.m is the wrapper function
     % FishRegistrationProcess is part of new FishATLAS Package
@@ -26,7 +26,7 @@ classdef  FishRegistrationProcess < ImLImageProcessingProcess & NonSingularProce
 
     methods (Access = public)
         function obj = FishRegistrationProcess(owner, varargin)
-            
+
             if nargin == 0
                 super_args = {};
             else
@@ -50,7 +50,7 @@ classdef  FishRegistrationProcess < ImLImageProcessingProcess & NonSingularProce
                 end
                 super_args{4} = funParams;
             end
-            obj = obj@ImLImageProcessingProcess(super_args{:});
+            obj = obj@ImageProcessingProcessImL(super_args{:});
             obj.is3Dcompatible_ = false; % outputs are 2D
         end
 
@@ -63,7 +63,7 @@ classdef  FishRegistrationProcess < ImLImageProcessingProcess & NonSingularProce
         end
 
         function h = GUI(varargin)
-            h = @noSettingsProcessGUI % @FishRegistrationProcessGUI;
+            h = @FishRegistrationProcessGUI;
         end
         
         function funParams = getDefaultParams(owner, varargin)
@@ -83,28 +83,64 @@ classdef  FishRegistrationProcess < ImLImageProcessingProcess & NonSingularProce
             funParams.ProcessIndex = []; % can use this parameter to set which previous process's output to be used as input for this process
 
 
-            funParams.vasChannel = 1; % was params.PreAlign.vasChannel = 1 in Hanieh's script, only used in Step 3: Registration
+            % funParams.vasChannel = 1; % QZ grab from the params in proc 1; was params.PreAlign.vasChannel = 1 in Hanieh's script, only used in Step 3: Registration
+            % funParams.cancerChannel = 2; % QZ grab from the params in proc 1; 
 
-            funParams.useRefImage = 1; % use the reference image
-            funParams.RefImagePath = []; % folder of reference image - QZ
-            funParams.RefImageName = 'RefImageAll.tif'; % GUI should be able to select single tif file as RefImage. - QZ
-            funParams.nonRigid.method = ''; %demon or deform
-            funParams.rigid.RefImageID = 1; % the id of which image should be used for rigid registration
-            funParams.rigid.tformType = 'affine';
-            funParams.rigid.regmodel = 'monomodal';
-            funParams.rigid.maxIter = 500;
-            funParams.rigid.FilterMetric = 'corrCross';
-            funParams.rigid.FilterThreshold = 0.7;
-            funParams.nonRigid.GridRegularization = 2;
-            funParams.nonRigid.NumPyramidLevels = 3;
-            funParams.nonRigid.FilterMetric = 'corrCross';
-            funParams.nonRigid.FilterThreshold = 0.82;
-            funParams.nonRigid.maxIter = 800;
-            funParams.nonRigid.AccumulatedFieldSmoothing = 3;
-            funParams.RefImageFilter = 'laplacianFilter';  % check the sharpness of refimage: mean or median of groupwise images
-            funParams.nonRigid.maxIterWhileLoop = 5; % maxIter for groupwise registration to be repeated after removing poor quality registered image
+            funParams.useRefImage = 1; % check box with callback % name: Use the Reference Image
+            funParams.RefImagePath = []; % This is a whole path of a refImage tif file from the GUI. which diff from folder of reference image Hanieh originally set. - QZ
+            % funParams.RefImageName = 'RefImageAll.tif'; % GUI should be able to select single tif file as RefImage. - QZ
 
+            funParams.rigid.RefImageID = 1; % edit box % Name:Rigid Transform Image ID, % the id of which image should be used for rigid registration
+            funParams.rigid.tformType = 'affine'; % popupmenu % Name:Rigid Transform Type, Option: {'translation', 'rigid', 'similarity', 'affine'}, Default: 'affine', Doc: This defines the geometric transformation applied during the rigid registration step
+            funParams.rigid.regmodel = 'monomodal'; % popupmenu %Name: Rigid Modality, Option:{'monomodal', 'multimodal'} Default: 'monomodal', Doc: This specifies the image modality used during the rigid registration step optimization
+            funParams.rigid.maxIter = 500; % edit box  %Name: Rigid Maximum Iteration, Default: 500, Doc: maximum iteration used for rigid registration step optimization
+            funParams.rigid.FilterMetric = 'corrCross'; % popupmenu %Name: Rigid Filter Metric, Option: {'MutualInfo','ssim','pHash','corrCross','MSE','featureExtract'}, Default: 'corrCross', Doc: This specifies a metric to compare each image with the reference image after rigid registration for removing bad registration
+            funParams.rigid.FilterThreshold = 0.7; % edit box  %Name : Rigid Filter Threshold, Default = 0.7. Doc: This threshold is used to remove the bad rigid registration image
+            
+            funParams.nonRigid.maxIter = 800; % edit box  % Name: Nonrigid Maximum Iteration, Default: 800, Doc: maximum iteration used for nonrigid registration step optimization           
+            funParams.nonRigid.GridRegularization = 2; % edit box  %Name: Nonrigid Grid Regularization, Default: 2, Doc: Weighing factor for grid displacement regularization for nonrigid step using "imregdeform" function in matlab, check doc "imregdeform"
+            funParams.nonRigid.NumPyramidLevels = 3; % edit box  %Name: Nonrigid Pyramid Level, Default: 3, Doc: Number of multiresolution pyramid levels, specified as a positive integer.for nonrigid step using "imregdeform" function in matlab, check doc "imregdeform"
+            funParams.nonRigid.FilterMetric = 'corrCross'; % popupmenu %Name: Nonrigid Filter Metric, Option: {'MutualInfo','ssim','pHash','corrCross','MSE','featureExtract'}, Default: 'corrCross', Doc: This specifies a metric to compare each image with the reference image after nonrigid registration for removing bad registration
+            funParams.nonRigid.FilterThreshold = 0.7; % edit box  %Name : Nonrigid Filter Threshold, Default = 0.7, test script is 0.82.  Doc: This threshold is used to remove the bad nonrigid registration image
+            funParams.nonRigid.AccumulatedFieldSmoothing = 3; % edit box  %Name : Nonrigid Accumulated Field Smoothing, Default = 3, Doc: check doc "imregdemons"
+
+            funParams.RefImageFilter = 'laplacianFilter'; % hide on GUI - QZ
+
+            funParams.nonRigid.maxIterWhileLoop = 5; % hide on GUI - QZ % QZ: Used but not defined, see line 42 in my script params.Reg.nonRigid.maxIterWhileLoop = 5;
+            funParams.nonRigid.method = ''; % hide, Doc: this will be saved during the process, as 'demon' or 'deform'
 
         end
+
+        % Below fcns are for popupmenus on GUI:
+        function validTypes =  getValid_rigid_tformType()
+            validTypes = {'translation', ...    
+                          'rigid',... 
+                          'similarity',...
+                          'affine'};
+        end
+
+        function validTypes =  getValid_rigid_regmodel()
+            validTypes = {'monomodal', ...    
+                          'multimodal'};
+        end
+
+        function validTypes =  getValid_rigid_FilterMetric()
+            validTypes = {'MutualInfo', ...    
+                          'ssim',... 
+                          'pHash',...
+                          'corrCross',...
+                          'MSE',...
+                          'featureExtract'};
+        end
+
+        function validTypes =  getValid_nonRigid_FilterMetric()
+            validTypes = {'MutualInfo', ...    
+                          'ssim',... 
+                          'pHash',...
+                          'corrCross',...
+                          'MSE',...
+                          'featureExtract'};
+        end
+
     end
 end
